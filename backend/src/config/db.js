@@ -21,7 +21,7 @@ export const connectDB = async () => {
       console.log("Connected to MongoDB Atlas database");
     });
   } catch (error) {
-    console.error("❌ MongoDB Connection Failed:", error.message);
+    console.error("MongoDB Connection Failed:", error.message);
 
     if (error.name === "MongooseServerSelectionError") {
       console.error("\n⚠️  Possible issues:");
