@@ -1,19 +1,19 @@
 import mongoose from "mongoose";
-
+//create function using async and await for long-running tasks
 export const connectDB = async () => {
   try {
     const mongoURL = process.env.MONGO_URL;
 
     if (!mongoURL) {
-      throw new Error("❌ MONGO_URL is not defined");
+      throw new Error(" MONGO_URL is not defined");
     }
 
     await mongoose.connect(mongoURL, {
       serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
+      socketTimeoutMS: 45000, // Stop waiting for response after 45 seconds
     });
 
-    console.log("✅ MongoDB Atlas Connected Successfully");
+    console.log(" MongoDB Atlas Connected Successfully");
 
     const db = mongoose.connection;
     db.on("error", console.error.bind(console, "MongoDB connection error:"));
@@ -23,13 +23,7 @@ export const connectDB = async () => {
   } catch (error) {
     console.error("MongoDB Connection Failed:", error.message);
 
-    if (error.name === "MongooseServerSelectionError") {
-      console.error("\n⚠️  Possible issues:");
-      console.error("1. Check your MongoDB Atlas cluster is running");
-      console.error("2. Verify your IP is whitelisted in MongoDB Atlas");
-      console.error("3. Check your username/password in the connection string");
-    }
-
-    process.exit(1);
+    process.exit(1); //stops the server doesnt run
   }
 };
+//orm obejrct relation mapper
