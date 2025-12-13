@@ -13,11 +13,11 @@ import { OAuth2Client } from "google-auth-library";
 export const registerService = async (name, email, password) => {
   try {
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await userModel.findOne({ email });
     if (existingUser) {
       throw new Error("User already exists with this email");
     }
-    const passwordHash = await bcrypt(password, 10);
+    const passwordHash = await hashPassword(password);
 
     // Create new user
     const newUser = await userModel.create({
