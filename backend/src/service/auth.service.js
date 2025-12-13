@@ -1,6 +1,7 @@
 import userModel from "../model/user.model.js";
 import {
   comparePassword,
+  generateOtp,
   generateToken,
   hashPassword,
 } from "../helper/auth.helper.js";
@@ -101,6 +102,7 @@ export const resetPasswordService = async (otp, newPassword) => {
     await user.save();
     return true;
   } catch (error) {
+    
     throw error;
   }
 };

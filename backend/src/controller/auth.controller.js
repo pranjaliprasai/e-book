@@ -4,6 +4,7 @@ import {
   googleCallbackService,
   loginService,
   registerService,
+  resetPasswordService,
 } from "../service/auth.service.js";
 import successResponse from "../utils/success.response.js";
 
@@ -55,6 +56,7 @@ export const forgetPasswordController = async (req, res, next) => {
       res
     );
   } catch (error) {
+    console.error("Error in forgetPasswordController:", error);
     next(error);
   }
 };
@@ -73,6 +75,7 @@ export const resetPasswordController = async (req, res, next) => {
       res
     );
   } catch (error) {
+    console.error("Error in resetPasswordController:", error);
     next(error);
   }
 };
