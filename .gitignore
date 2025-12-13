@@ -1,2 +1,7 @@
 backend/.env
 backend/node_modules/
+
+mobile-app/.env
+mobile-app/node_modules/
+
+**/node_modules/ 
