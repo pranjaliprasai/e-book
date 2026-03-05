@@ -41,3 +41,7 @@ app-example
 # generated native folders
 /ios
 /android
+../sma
+//nodempodule
+mobile-app/.env
+mobile-app/node_modules/

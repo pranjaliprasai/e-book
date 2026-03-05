@@ -18,26 +18,24 @@ export const registerUserController = async (req, res, next) => {
     );
   } catch (error) {
     console.error("Error in registerUserController:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    next(error);
   }
 };
 
-export const loginUserController = async (req, res) => {
+export const loginUserController = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    console.log(`Login attempt for: ${email}`);
 
-    const token = await loginService(email, password);
+    const { token, user } = await loginService(email, password);
 
-    //  return res.status(200).json({ message: "Login successful", data: token });
     successResponse(
-      { success: true, message: "Login successful", data: token },
+      { success: true, message: "Login successful", data: { token, user } },
       res
     );
   } catch (error) {
-    console.error("Error in loginUserController:", error);
-    res
-      .status(500)
-      .json({ message: "Internal Server Error", error: error.message });
+    console.error(`Login failed for ${req.body.email}:`, error.message);
+    next(error);
   }
 };
 

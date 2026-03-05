@@ -1,17 +1,18 @@
-import express from "express";
 import dotenv from "dotenv";
+dotenv.config();
+
+import express from "express";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 import { connectDB } from "./src/config/db.js";
 import { errorConverter, notFound } from "./src/utils/error.js";
+
 import indexRoute from "./src/routes/index.route.js";
 import cors from "cors";
 import morgan from "morgan";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-dotenv.config({ path: resolve(process.cwd(), ".env") });
 
 const app = express();
 
@@ -24,6 +25,9 @@ app.use(
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   })
 );
+
+// Serve static files from uploads folder
+app.use("/uploads", express.static(resolve(__dirname, "uploads")));
 
 app.use("/api", indexRoute);
 

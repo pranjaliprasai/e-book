@@ -20,11 +20,13 @@ export const comparePassword = async (password, hashedPassword) => {
   }
 };
 
-export const generateToken = (userId, name, email) => {
+export const generateToken = (userId, name, email, role) => {
   try {
-    const token = jwt.sign({ userId, name, email }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const token = jwt.sign(
+      { userId, name, email, role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
     return token;
   } catch (error) {
     console.error("Error generating token:", error);
