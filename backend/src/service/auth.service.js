@@ -15,7 +15,7 @@ export const registerService = async (name, email, password) => {
     // Check if user already exists
     const existingUser = await userModel.findOne({ email });
     if (existingUser) {
-      throw new Error("User already exists with this email");
+      throw new AppError("User already exists with this email", 400);
     }
     const passwordHash = await hashPassword(password);
 
@@ -46,8 +46,18 @@ export const loginService = async (email, password) => {
       throw new AppError("Invalid password", 400);
     }
 
-    const token = generateToken(user._id, user.name, user.email);
-    return token;
+    const token = generateToken(user._id, user.name, user.email, user.role);
+    return {
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        picture: user.picture,
+        favorites: user.favorites || [],
+      },
+    };
   } catch (error) {
     throw error;
   }
@@ -102,7 +112,6 @@ export const resetPasswordService = async (otp, newPassword) => {
     await user.save();
     return true;
   } catch (error) {
-    
     throw error;
   }
 };
@@ -158,11 +167,13 @@ export const googleCallbackService = async (code, redirect_uri) => {
     const user = await userModel.findOne({ email });
 
     if (user) {
-      token = generateToken(user._id, user.name, user.email);
+      token = generateToken(user._id, user.name, user.email, user.role);
       const resData = {
         name: user.name,
         email: user.email,
         picture,
+        role: user.role,
+        favorites: user.favorites || [],
       };
       return { resData, token };
     } else {
@@ -173,11 +184,13 @@ export const googleCallbackService = async (code, redirect_uri) => {
       });
     }
 
-    token = generateToken(newUser?._id, name, email);
+    token = generateToken(newUser?._id, name, email, "user");
     const resData = {
       name,
       email,
       picture,
+      role: "user",
+      favorites: newUser?.favorites || [],
     };
     return { resData, token };
   } catch (error) {

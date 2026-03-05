@@ -8,6 +8,7 @@ const UserModel = new mongoose.Schema(
     isGoogle: { type: Boolean, default: false },
     picture: { type: String, default: "" },
     role: { type: String, enum: ["user", "admin"], default: "user" },
+    favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
   },
   { timestamps: true }
 );
