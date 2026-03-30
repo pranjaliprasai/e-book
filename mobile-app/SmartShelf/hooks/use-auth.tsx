@@ -67,15 +67,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      */
     const logout = async () => {
         try {
+            // Set user state to null first to ensure UI updates immediately
+            // regardless of storage removal success
+            setUser(null);
+            
             await AsyncStorage.multiRemove([
                 STORAGE_KEYS.ACCESS_TOKEN,
                 STORAGE_KEYS.USER_DATA,
                 STORAGE_KEYS.REFRESH_TOKEN
             ]);
-            setUser(null);
+            
             if (__DEV__) console.log('👋 [Auth logout] Storage cleared, User logged out.');
         } catch (error) {
             console.error('❌ [Auth logout] Failed to clear storage:', error);
+            // Even if storage fails (e.g. disk full), we already set user to null
+            // so the app will redirect to login.
         }
     };
 

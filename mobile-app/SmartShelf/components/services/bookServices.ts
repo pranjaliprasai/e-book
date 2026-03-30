@@ -112,3 +112,82 @@ export const getBookById = async (id: string) => {
         };
     }
 };
+
+export const saveHighlight = async (highlightData: { bookId: string, text: string, rangeData: any, color?: string }) => {
+    try {
+        const response = await apiClient.post(API_ENDPOINTS.HIGHLIGHT, highlightData);
+        return { success: response.data.success, data: response.data.data };
+    } catch (error: any) {
+        console.error('Save Highlight Error:', error.response?.data || error.message);
+        return { success: false, message: error.response?.data?.message || 'Failed to save highlight' };
+    }
+};
+
+export const getHighlightsByBook = async (bookId: string) => {
+    try {
+        const response = await apiClient.get(`${API_ENDPOINTS.HIGHLIGHT}/${bookId}`);
+        if (response.data.success) {
+            return { success: true, data: response.data.data };
+        }
+        return { success: false, message: response.data.message };
+    } catch (error: any) {
+        console.error('Get Highlights Error:', error.response?.data || error.message);
+        return { success: false, message: error.response?.data?.message || 'Failed to fetch highlights' };
+    }
+};
+
+export const deleteHighlight = async (id: string) => {
+    try {
+        const response = await apiClient.delete(`${API_ENDPOINTS.HIGHLIGHT}/${id}`);
+        return { success: response.data.success, message: response.data.message };
+    } catch (error: any) {
+        console.error('Delete Highlight Error:', error.response?.data || error.message);
+        return { success: false, message: error.response?.data?.message || 'Failed to delete highlight' };
+    }
+};
+
+// Reading Progress
+export const getProgress = async (bookId: string) => {
+    try {
+        const response = await apiClient.get(`${API_ENDPOINTS.USER_PROGRESS}/${bookId}`);
+        if (response.data.success) {
+            return { success: true, data: response.data.data };
+        }
+        return { success: false, message: response.data.message };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Failed to fetch progress' };
+    }
+};
+
+export const saveProgress = async (bookId: string, progress: number) => {
+    try {
+        const response = await apiClient.post(`${API_ENDPOINTS.USER_PROGRESS}/${bookId}`, { progress });
+        return { success: response.data.success, message: response.data.message };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Failed to save progress' };
+    }
+};
+
+export const getCurrentReadingBooks = async () => {
+    try {
+        const response = await apiClient.get(API_ENDPOINTS.CURRENT_READING);
+        if (response.data.success) {
+            return { success: true, data: response.data.data };
+        }
+        return { success: false, message: response.data.message };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Failed to fetch current reading books' };
+    }
+};
+
+export const updateReadingStats = async (stats: { pagesRead?: number, timeSpent?: number }) => {
+    try {
+        const response = await apiClient.post(API_ENDPOINTS.UPDATE_STATS, stats);
+        if (response.data.success) {
+            return { success: true, data: response.data.data };
+        }
+        return { success: false, message: response.data.message };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Failed to update reading stats' };
+    }
+};

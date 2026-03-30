@@ -84,8 +84,9 @@ export default function BookDetails() {
         if (pdfUrl && pdfUrl.startsWith('http')) {
             finalUrl = pdfUrl;
         } else if (pdfUrl) {
-            // Local backend PDF
-            finalUrl = `${IMAGE_BASE_URL}/${pdfUrl.replace(/\\/g, '/')}`;
+            // Local backend PDF - ensure no double slashes
+            const cleanPath = pdfUrl.replace(/\\/g, '/').replace(/^\//, '');
+            finalUrl = `${IMAGE_BASE_URL}/${cleanPath}`;
         } else if (book.isDiscovery || book.isbn?.startsWith('GUT-')) {
             // Gutenberg fallback: Use the direct HTML reading link which is more integrated than the landing page
             finalUrl = `https://www.gutenberg.org/ebooks/${book.externalId || ''}.html.images`;
@@ -94,7 +95,7 @@ export default function BookDetails() {
         if (finalUrl) {
             router.push({
                 pathname: '/Reader',
-                params: { url: finalUrl, title: book.title }
+                params: { url: finalUrl, title: book.title, id: book._id }
             });
         } else {
             Alert.alert("Notice", "A readable format for this book is not available yet.");
@@ -170,7 +171,7 @@ export default function BookDetails() {
                 </View>
 
                 <TouchableOpacity style={styles.readButton as any} onPress={handleRead}>
-                    <Text style={styles.readButtonText as any}>Read E-Book</Text>
+                    <Text style={styles.readButtonText as any}>Read More</Text>
                 </TouchableOpacity>
 
                 {isFavorite && (
@@ -214,14 +215,19 @@ const styles = StyleSheet.create({
     },
     coverImage: {
         width: '100%',
-        height: 400,
+        height: 450,
     },
     content: {
-        padding: 20,
+        padding: 24,
         backgroundColor: '#FFF',
         borderTopLeftRadius: 30,
         borderTopRightRadius: 30,
         marginTop: -30,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -10 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 5,
     },
     titleRow: {
         flexDirection: 'row',
@@ -229,11 +235,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     title: {
-        fontSize: 24,
-        fontWeight: 'bold',
+        fontSize: 26,
+        fontWeight: '900',
         color: '#333',
         flex: 1,
         marginRight: 10,
+        letterSpacing: -0.5,
     },
     favoriteBtn: {
         padding: 5,
@@ -241,61 +248,73 @@ const styles = StyleSheet.create({
     author: {
         fontSize: 18,
         color: '#666',
-        marginTop: 5,
+        marginTop: 4,
+        fontWeight: '600',
     },
     badgeRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 15,
+        marginTop: 20,
         justifyContent: 'space-between',
     },
     genreBadge: {
         backgroundColor: '#F0F9E8',
         paddingHorizontal: 15,
-        paddingVertical: 5,
+        paddingVertical: 6,
         borderRadius: 20,
     },
     genreText: {
         color: '#6B8E23',
-        fontWeight: 'bold',
+        fontWeight: '900',
+        fontSize: 12,
+        textTransform: 'uppercase',
     },
     isbn: {
         color: '#999',
-        fontSize: 12,
+        fontSize: 11,
+        fontWeight: '600',
     },
     section: {
-        marginTop: 25,
+        marginTop: 30,
     },
     sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
+        fontSize: 20,
+        fontWeight: '900',
         color: '#333',
-        marginBottom: 10,
+        marginBottom: 12,
     },
     description: {
         fontSize: 16,
         color: '#444',
-        lineHeight: 24,
+        lineHeight: 26,
+        textAlign: 'justify',
     },
     readButton: {
         backgroundColor: '#6B8E23',
         padding: 18,
-        borderRadius: 15,
+        borderRadius: 12,
         alignItems: 'center',
-        marginTop: 30,
-        marginBottom: 40,
+        marginTop: 35,
+        marginBottom: 20,
+        shadowColor: "#6B8E23",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
     },
     readButtonText: {
         color: '#FFF',
         fontSize: 18,
-        fontWeight: 'bold',
+        fontWeight: '900',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
     },
     removeButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 15,
-        borderRadius: 15,
+        padding: 16,
+        borderRadius: 12,
         backgroundColor: '#FFF1F0',
         marginTop: 10,
         marginBottom: 40,
@@ -305,7 +324,7 @@ const styles = StyleSheet.create({
     removeButtonText: {
         color: '#CD5C5C',
         fontSize: 16,
-        fontWeight: '600',
+        fontWeight: '700',
         marginLeft: 8,
     },
 });

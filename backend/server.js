@@ -23,7 +23,8 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  })
+    allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
+  }),
 );
 
 // Serve static files from uploads folder

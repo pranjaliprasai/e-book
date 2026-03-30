@@ -11,7 +11,8 @@ import {
   Platform,
   Dimensions,
 } from "react-native";
-import { login as loginService, register, forgotPassword, resetPassword, googleLogin } from "../../components/services/authServices";
+import { login as loginService, register, forgotPassword, resetPassword, googleLogin } from "../components/services/authServices";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
 import * as Google from 'expo-auth-session/providers/google';
@@ -47,16 +48,28 @@ export default function Login() {
   const modeAnim = useSharedValue(0); // 0 for signin, 1 for signup
   const forgotAnim = useSharedValue(0); // 1 when in forgot password mode
 
+  const redirectUri = AuthSession.makeRedirectUri({
+    scheme: 'smartshelf',
+    path: 'google-auth',
+  });
+
+  useEffect(() => {
+    console.log('🔗 [Google Auth] REDIRECT URI:', redirectUri);
+    console.log('⚠️ [Action Required] Ensure this URL is whitelisted in your Native Client IDs (iOS/Android) in Google Console.');
+  }, [redirectUri]);
+
   const [request, response, promptAsync] = Google.useAuthRequest({
-    iosClientId: '179153186138-iicioq24309qj7ccv79pi4nljcjf0p55.apps.googleusercontent.com',
-    androidClientId: '179153186138-iicioq24309qj7ccv79pi4nljcjf0p55.apps.googleusercontent.com',
+    // IMPORTANT: Replace these with your actual NATIVE Client IDs from Google Cloud Console
+    iosClientId: 'YOUR_IOS_NATIVE_CLIENT_ID.apps.googleusercontent.com',
+    androidClientId: 'YOUR_ANDROID_NATIVE_CLIENT_ID.apps.googleusercontent.com',
     webClientId: '179153186138-iicioq24309qj7ccv79pi4nljcjf0p55.apps.googleusercontent.com',
+    redirectUri: redirectUri,
   });
 
   useEffect(() => {
     if (response?.type === 'success') {
       const { code } = response.params;
-      handleGoogleLogin(code);
+      handleGoogleLogin(code, redirectUri);
     }
   }, [response]);
 
@@ -69,11 +82,10 @@ export default function Login() {
     }
   }, [authMode]);
 
-  const handleGoogleLogin = async (code: string) => {
+  const handleGoogleLogin = async (code: string, uri: string) => {
     setIsLoading(true);
     try {
-      const redirectUri = AuthSession.makeRedirectUri();
-      const res = await googleLogin(code, redirectUri);
+      const res = await googleLogin(code, uri);
       if (__DEV__) console.log('🔍 [Google Login Service Response]:', res);
 
       if (res.success) {
@@ -180,7 +192,7 @@ export default function Login() {
       { translateX: interpolate(modeAnim.value, [0, 1], [0, -width], Extrapolate.CLAMP) },
       { scale: interpolate(modeAnim.value, [0, 1], [1, 0.9], Extrapolate.CLAMP) }
     ],
-    display: authMode === 'signup' ? 'none' : 'flex'
+    display: authMode === 'signin' ? 'flex' : 'none'
   }));
 
   const signupFormStyle = useAnimatedStyle(() => ({
@@ -189,7 +201,7 @@ export default function Login() {
       { translateX: interpolate(modeAnim.value, [0, 1], [width, 0], Extrapolate.CLAMP) },
       { scale: interpolate(modeAnim.value, [0, 1], [0.9, 1], Extrapolate.CLAMP) }
     ],
-    display: authMode === 'signin' ? 'none' : 'flex'
+    display: authMode === 'signup' ? 'flex' : 'none'
   }));
 
   const forgotFormStyle = useAnimatedStyle(() => ({
@@ -212,7 +224,11 @@ export default function Login() {
         {/* Logo and Header */}
         <Animated.View style={[styles.header, headerStyle]}>
           <View style={styles.logoContainer}>
-            <MaterialCommunityIcons name="book-open-page-variant" size={48} color="#4F7942" />
+            <Image
+              source={require('../assets/images/mainapplogo.png')}
+              style={styles.logoImage}
+              contentFit="contain"
+            />
           </View>
           <Text style={styles.title}>SmartShelf</Text>
           <Text style={styles.subtitle}>Your Digital Knowledge Haven</Text>
@@ -419,35 +435,40 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: "center",
+    backgroundColor: "#F9F9F7",
   },
   header: {
     alignItems: "center",
     marginBottom: 40,
   },
   logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: "#FFF",
+    width: 150,
+    height: 150,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    marginBottom: 20,
+    backgroundColor: "transparent",
+    // Add a very subtle elevation/glow effect if it's a transparency-heavy logo
+    shadowColor: "#4F7942",
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 15,
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   title: {
-    fontSize: 28,
-    fontWeight: "bold",
+    fontSize: 32,
+    fontWeight: "900",
     color: "#2F4F4F",
-    letterSpacing: 0.5,
+    letterSpacing: -1,
   },
   subtitle: {
     fontSize: 16,
     color: "#8B7D6B",
     marginTop: 4,
+    fontWeight: "600",
   },
   authToggleWrapper: {
     marginBottom: 30,
@@ -469,10 +490,10 @@ const styles = StyleSheet.create({
     top: 4,
     left: 4,
     shadowColor: "#4F7942",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 6,
+    elevation: 4,
   },
   toggleButton: {
     flex: 1,
@@ -481,8 +502,8 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   toggleText: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: "#8B7D6B",
   },
   activeToggleText: {
@@ -515,6 +536,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: "#333",
+    fontWeight: "600",
   },
   forgotBtn: {
     alignSelf: "flex-end",
@@ -523,7 +545,7 @@ const styles = StyleSheet.create({
   forgotText: {
     color: "#4F7942",
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   primaryBtn: {
     backgroundColor: "#4F7942",
@@ -533,14 +555,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     shadowColor: "#4F7942",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
     elevation: 4,
   },
   primaryBtnText: {
     color: "#FFF",
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
   divider: {
     flexDirection: "row",
@@ -556,7 +580,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     color: "#8B7D6B",
     fontSize: 12,
-    fontWeight: "bold",
+    fontWeight: "900",
   },
   googleBtn: {
     flexDirection: "row",
@@ -570,15 +594,16 @@ const styles = StyleSheet.create({
   },
   googleBtnText: {
     color: "#333",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
   },
   forgotTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
+    fontSize: 26,
+    fontWeight: "900",
     color: "#2F4F4F",
     textAlign: "center",
     marginBottom: 10,
+    letterSpacing: -0.5,
   },
   forgotSubtitle: {
     fontSize: 15,
@@ -586,6 +611,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 30,
     lineHeight: 22,
+    fontWeight: "600",
   },
   backToLogin: {
     marginTop: 20,
@@ -594,6 +620,6 @@ const styles = StyleSheet.create({
   backToLoginText: {
     color: "#4F7942",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 });

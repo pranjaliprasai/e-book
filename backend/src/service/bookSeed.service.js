@@ -38,11 +38,14 @@ const fetchGutenbergBatch = async (topic, limit = 50) => {
                     author: book.authors[0]?.name || 'Unknown Author',
                     isbn: `GUT-${book.id}`,
                     genre: topic,
-                    description: `A classic work of ${topic} available from Project Gutenberg.`,
+                    description: book.summaries && book.summaries.length > 0
+                        ? book.summaries[0].replace(/\(This is an automatically generated summary\.\)/ig, '').trim()
+                        : `A classic work of ${topic} available from Project Gutenberg.`,
                     coverImageUrl: book.formats['image/jpeg'] || 'https://via.placeholder.com/300x450?text=No+Cover',
                     pdfUrl: directUrl,
                     externalId: String(book.id),
-                    isDiscovery: true
+                    isDiscovery: true,
+                    rating: parseFloat((Math.random() * (5.0 - 3.5) + 3.5).toFixed(1))
                 };
             });
 
@@ -64,19 +67,38 @@ const fetchOpenLibraryBatch = async (subject, limit = 50) => {
     try {
         const url = `https://openlibrary.org/subjects/${encodeURIComponent(subject.toLowerCase().replace(' ', '_'))}.json?limit=${limit}`;
         const response = await axios.get(url);
-        return response.data.works.map(book => ({
-            title: book.title,
-            author: book.authors?.[0]?.name || 'Unknown Author',
-            isbn: `OL-${book.key.split('/').pop()}`,
-            genre: subject,
-            description: `A discovered work of ${subject} from Open Library.`,
-            coverImageUrl: book.cover_id
-                ? `https://covers.openlibrary.org/b/id/${book.cover_id}-L.jpg`
-                : 'https://via.placeholder.com/300x450?text=No+Cover',
-            pdfUrl: '', // Open Library often requires separate fetching for PDF links
-            externalId: book.key,
-            isDiscovery: true
+        const detailedWorks = await Promise.all(response.data.works.map(async (book) => {
+            let description = '';
+            try {
+                // book.key comes as e.g. "/works/OL12345W"
+                const workUrl = `https://openlibrary.org${book.key}.json`;
+                const workRes = await axios.get(workUrl);
+                if (workRes.data && workRes.data.description) {
+                    description = typeof workRes.data.description === 'object'
+                        ? workRes.data.description.value
+                        : workRes.data.description;
+                }
+            } catch (err) {
+                console.error(`Error fetching description for ${book.key}:`, err.message);
+            }
+
+            return {
+                title: book.title,
+                author: book.authors?.[0]?.name || 'Unknown Author',
+                isbn: `OL-${book.key.split('/').pop()}`,
+                genre: subject,
+                description: description || '',
+                coverImageUrl: book.cover_id
+                    ? `https://covers.openlibrary.org/b/id/${book.cover_id}-L.jpg`
+                    : 'https://via.placeholder.com/300x450?text=No+Cover',
+                pdfUrl: '', // Open Library often requires separate fetching for PDF links
+                externalId: book.key,
+                isDiscovery: true,
+                rating: parseFloat((Math.random() * (5.0 - 3.5) + 3.5).toFixed(1))
+            };
         }));
+
+        return detailedWorks;
     } catch (error) {
         console.error(`Error fetching Open Library batch for ${subject}:`, error.message);
         return [];
