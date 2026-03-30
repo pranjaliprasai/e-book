@@ -75,3 +75,37 @@ export const resetPassword = async (otp: string, newPassword: string) => {
         return { success: false, message: error.response?.data?.message || 'Failed to reset password' };
     }
 };
+
+export const updateProfile = async (updateData: any) => {
+    try {
+        let data = updateData;
+        let headers = {};
+
+        // If including a file (uri present), use FormData
+        if (updateData.profilePictureUri) {
+            const formData = new FormData();
+            formData.append('name', updateData.name);
+            if (updateData.password) formData.append('password', updateData.password);
+
+            // @ts-ignore
+            formData.append('profilePicture', {
+                uri: updateData.profilePictureUri,
+                name: 'profile.jpg',
+                type: 'image/jpeg',
+            });
+            data = formData;
+            headers = { 'Content-Type': 'multipart/form-data' };
+        }
+
+        const response = await apiClient.put(`${API_ENDPOINTS.USER}/profile`, data, { headers });
+        if (response.data.success) {
+            return { success: true, user: response.data.data };
+        }
+        return { success: false, message: response.data.message };
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to update profile'
+        };
+    }
+};

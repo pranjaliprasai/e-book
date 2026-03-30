@@ -48,14 +48,15 @@ export const getAllBooksService = async (genre, isDiscovery, limit, search, sour
         const query = {};
         if (genre) query.genre = genre;
 
-        // Only apply isDiscovery filter when NOT doing a text search
-        // (search should sweep ALL books regardless of discovery status)
-        if (!search && isDiscovery !== undefined) {
+        // Only apply isDiscovery filter when NOT doing a text search OR specific category lookup
+        // (If source or genre is provided, user wants specific category content regardless of discovery status)
+        if (!search && !source && !genre && isDiscovery !== undefined) {
             const isDiscVal = isDiscovery === 'true' || isDiscovery === true;
             if (isDiscVal) {
                 query.isDiscovery = true;
             } else {
-                // Return books where isDiscovery is explicitly false OR missing/undefined
+                // If the app explicitly asks for non-discovery books, we respect it.
+                // However, we'll keep it as $ne: true for compatibility.
                 query.isDiscovery = { $ne: true };
             }
         }

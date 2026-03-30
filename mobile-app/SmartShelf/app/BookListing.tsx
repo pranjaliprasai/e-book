@@ -58,7 +58,7 @@ export default function BookListing() {
                             coverUrl: b.coverImageUrl.startsWith('http')
                                 ? b.coverImageUrl
                                 : `${IMAGE_BASE_URL}/${b.coverImageUrl.replace(/\\/g, '/')}`,
-                            rating: 4.5, // Mock rating for now
+                            rating: b.rating || 4.2,
                             isExternal: false,
                             originalData: b,
                         }));
@@ -74,7 +74,7 @@ export default function BookListing() {
                             coverUrl: b.coverImageUrl.startsWith('http')
                                 ? b.coverImageUrl
                                 : `${IMAGE_BASE_URL}/${b.coverImageUrl.replace(/\\/g, '/')}`,
-                            rating: 4.8, // Mock rating
+                            rating: b.rating || 4.2,
                             isExternal: false,
                             originalData: b,
                         }));
@@ -91,7 +91,7 @@ export default function BookListing() {
                             coverUrl: b.coverImageUrl.startsWith('http')
                                 ? b.coverImageUrl
                                 : `${IMAGE_BASE_URL}/${b.coverImageUrl.replace(/\\/g, '/')}`,
-                            rating: 4.2, // Mock rating
+                            rating: b.rating || 4.2,
                             isExternal: false, // It's in our DB now
                             originalData: b,
                         }));
@@ -109,7 +109,7 @@ export default function BookListing() {
                             coverUrl: b.coverImageUrl.startsWith('http')
                                 ? b.coverImageUrl
                                 : `${IMAGE_BASE_URL}/${b.coverImageUrl.replace(/\\/g, '/')}`,
-                            rating: 4.5, // Mock rating
+                            rating: b.rating || 4.2,
                             isExternal: false,
                             originalData: b,
                         }));
@@ -158,7 +158,7 @@ export default function BookListing() {
             } else if (i === fullStars && hasHalf) {
                 stars.push(<MaterialCommunityIcons key={i} name="star-half-full" size={14} color="#FFD700" />);
             } else {
-                stars.push(<MaterialCommunityIcons key={i} name="star-outline" size={14} color="#D3D3D3" />);
+                stars.push(<MaterialCommunityIcons key={i} name="star-outline" size={14} color="#EEE" />);
             }
         }
         return <View style={styles.starsContainer}>{stars}</View>;
@@ -190,7 +190,7 @@ export default function BookListing() {
 
             <View style={styles.headerRow}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <MaterialCommunityIcons name="arrow-left" size={28} color="#2F4F4F" />
+                    <MaterialCommunityIcons name="arrow-left" size={28} color="#000" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
             </View>
@@ -237,8 +237,8 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     headerTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
+        fontSize: 22,
+        fontWeight: '900',
         color: '#2F4F4F',
         flex: 1,
     },
@@ -246,6 +246,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: '#F9F9F7',
     },
     listContent: {
         paddingHorizontal: 24,
@@ -259,34 +260,33 @@ const styles = StyleSheet.create({
     card: {
         width: CARD_WIDTH,
         backgroundColor: '#FFF',
-        borderRadius: 16,
+        borderRadius: 12,
         overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: '#EBE9E2',
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 5,
-        elevation: 2,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+        elevation: 3,
+        marginBottom: 8,
     },
     coverImage: {
         width: '100%',
         height: CARD_WIDTH * 1.4, // Aspect ratio
     },
     cardContent: {
-        padding: 12,
+        padding: 10,
     },
     bookTitle: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: 'bold',
-        color: '#2F4F4F',
+        color: '#333',
         marginBottom: 4,
-        height: 40, // Fixed height for 2 lines
+        height: 36, // Fixed height for 2 lines
     },
     bookAuthor: {
-        fontSize: 12,
+        fontSize: 11,
         color: '#8B7D6B',
-        marginBottom: 8,
+        marginBottom: 6,
     },
     ratingRow: {
         flexDirection: 'row',
@@ -297,9 +297,9 @@ const styles = StyleSheet.create({
         marginRight: 4,
     },
     ratingText: {
-        fontSize: 12,
+        fontSize: 11,
         color: '#A99F92',
-        fontWeight: '600',
+        fontWeight: '700',
     },
     noResultsText: {
         marginTop: 16,

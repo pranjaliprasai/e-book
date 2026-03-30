@@ -3,12 +3,16 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { ThemeProvider, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { ActivityIndicator, View, StatusBar } from 'react-native';
+import { ActivityIndicator, View, StatusBar, LogBox } from 'react-native';
+import MilestoneStatusBar from '@/components/ui/MilestoneStatusBar';
+import { ThemeProvider as AppThemeProvider, useTheme } from '@/hooks/use-theme';
+
 
 function RootLayoutNav() {
     const { user, isLoading } = useAuth();
     const segments = useSegments();
     const router = useRouter();
+    const { colors } = useTheme();
     const colorScheme = useColorScheme();
 
     useEffect(() => {
@@ -29,20 +33,26 @@ function RootLayoutNav() {
 
     if (isLoading) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5DC' }}>
-                <ActivityIndicator size="large" color="#6B8E23" />
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+                <ActivityIndicator size="large" color={colors.primary} />
             </View>
         );
     }
 
     return (
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <Stack>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="BookListing" options={{ title: 'Books' }} />
-                <Stack.Screen name="BookDetails" options={{ title: 'Book Details' }} />
-                <Stack.Screen name="Reader" options={{ headerShown: false }} />
-            </Stack>
+            <View style={{ flex: 1 }}>
+                <MilestoneStatusBar />
+                <Stack>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="Login" options={{ headerShown: false }} />
+                    <Stack.Screen name="Register" options={{ headerShown: false }} />
+                    <Stack.Screen name="BookListing" options={{ title: 'Books' }} />
+                    <Stack.Screen name="BookDetails" options={{ title: 'Book Details' }} />
+                    <Stack.Screen name="Reader" options={{ headerShown: false }} />
+                    <Stack.Screen name="ReadingMilestones" options={{ title: 'Reading Milestones', headerShown: false }} />
+                </Stack>
+            </View>
             <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
         </ThemeProvider>
     );
@@ -51,7 +61,9 @@ function RootLayoutNav() {
 export default function RootLayout() {
     return (
         <AuthProvider>
-            <RootLayoutNav />
+            <AppThemeProvider>
+                <RootLayoutNav />
+            </AppThemeProvider>
         </AuthProvider>
     );
 }

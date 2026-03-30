@@ -8,7 +8,13 @@ const UserModel = new mongoose.Schema(
     isGoogle: { type: Boolean, default: false },
     picture: { type: String, default: "" },
     role: { type: String, enum: ["user", "admin"], default: "user" },
+    status: { type: String, enum: ["active", "inactive"], default: "active" },
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
+    readingStats: {
+      totalPagesRead: { type: Number, default: 0 },
+      totalReadingTime: { type: Number, default: 0 }, // in seconds
+      achievedMilestones: [{ type: String }], // e.g., ["PAGE_10", "TIME_1"]
+    },
   },
   { timestamps: true }
 );

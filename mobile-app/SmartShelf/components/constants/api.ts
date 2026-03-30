@@ -1,5 +1,17 @@
-export const API_BASE_URL = "http://192.168.1.79:5000/api";
-export const API_TIMEOUT = 10000;
+// export const API_BASE_URL = "http://localhost:5000/api"; // Use for iOS Simulator
+// export const API_BASE_URL = "http://10.0.2.2:5000/api"; // Use for Android Emulator
+
+// Active Tunnel URL (Update this when tunnel restarts)
+// Use the fixed ngrok hostname if configured in ngrok.yml
+const FORWARED_URL = "-https://cresyl-regina-nonfacetiously.ngrok-free.dev";
+
+// Unified Gateway (Recommended for one tunnel connecting both API and Metro)
+// const FORWARED_URL = "https://your-unified-tunnel.ngrok-free.dev"; 
+
+export const API_BASE_URL = FORWARED_URL + "/api"; 
+
+
+export const API_TIMEOUT = 60000;
 
 export const API_ENDPOINTS = {
     LOGIN: "/auth/login",
@@ -15,6 +27,12 @@ export const API_ENDPOINTS = {
     IMPORT_BOOK: "/book/import",
     TOGGLE_FAVORITE: "/user/favorites",
     GET_FAVORITES: "/user/favorites",
+    USER: "/user",
+    HIGHLIGHT: "/highlight",
+    USER_PROGRESS: "/user/progress",
+    CURRENT_READING: "/user/current-reading",
+    UPDATE_STATS: "/user/stats/update",
+    NOTIFICATIONS: "/notifications",
 };
 
 export const EXTERNAL_APIS = {

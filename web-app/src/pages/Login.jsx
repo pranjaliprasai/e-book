@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { loginAPI } from "../api/auth";
 import { useAuth } from "../context/AuthContext";
+import loginLogo from "../assets/loginlogo.png";
+import appLogo from "../assets/Mobileapplogo.png";
 
 const Login = () => {
     const { login } = useAuth();
@@ -40,9 +42,11 @@ const Login = () => {
         <div className="auth-wrapper">
             <div className="auth-left">
                 <div className="auth-brand">
-                    <span className="brand-icon">📚</span>
-                    <h1>SmartShelf</h1>
-                    <p>Admin portal for managing the e-book platform. Authorised access only.</p>
+                    <div className="logo-container">
+                        <img src={loginLogo} alt="SmartShelf Logo" className="login-logo" />
+                    </div>
+                    <h1>SmartShelf Admin</h1>
+                    <p>Digital dashboard for platform management and administration.</p>
                 </div>
             </div>
             <div className="auth-right">
