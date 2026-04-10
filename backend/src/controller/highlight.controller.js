@@ -40,6 +40,10 @@ export const getHighlightsByBook = async (req, res, next) => {
         const { bookId } = req.params;
         const userId = req.user.userId;
 
+        if (!bookId || bookId === 'null' || bookId === 'undefined') {
+            throw new AppError('A valid Book ID is required', 400);
+        }
+
         const highlights = await Highlight.find({ userId, bookId }).sort({ createdAt: 1 });
 
         successResponse({
@@ -58,6 +62,10 @@ export const deleteHighlight = async (req, res, next) => {
     try {
         const { id } = req.params;
         const userId = req.user.userId;
+
+        if (!id || id === 'null' || id === 'undefined') {
+            throw new AppError('A valid highlight ID is required', 400);
+        }
 
         const result = await Highlight.findOneAndDelete({ _id: id, userId });
 

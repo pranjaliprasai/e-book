@@ -8,7 +8,14 @@ import { API_ENDPOINTS } from '../constants/api';
 export const getBooks = async (genre?: string, isDiscovery?: boolean, limit?: number, search?: string, source?: string) => {
     try {
         const response = await apiClient.get(API_ENDPOINTS.GET_BOOKS, {
-            params: { genre, isDiscovery, ...(limit ? { limit } : {}), ...(search ? { search } : {}), ...(source ? { source } : {}) }
+            params: { 
+                genre, 
+                // Explicitly stringify boolean for stable query param serialization
+                isDiscovery: isDiscovery !== undefined ? String(isDiscovery) : undefined, 
+                ...(limit ? { limit } : {}), 
+                ...(search ? { search } : {}), 
+                ...(source ? { source } : {}) 
+            }
         });
 
         if (response.data.success) {
@@ -168,6 +175,15 @@ export const saveProgress = async (bookId: string, progress: number) => {
     }
 };
 
+export const deleteProgress = async (bookId: string) => {
+    try {
+        const response = await apiClient.delete(`${API_ENDPOINTS.USER_PROGRESS}/${bookId}`);
+        return { success: response.data.success, message: response.data.message };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Failed to delete progress' };
+    }
+};
+
 export const getCurrentReadingBooks = async () => {
     try {
         const response = await apiClient.get(API_ENDPOINTS.CURRENT_READING);
@@ -180,7 +196,19 @@ export const getCurrentReadingBooks = async () => {
     }
 };
 
-export const updateReadingStats = async (stats: { pagesRead?: number, timeSpent?: number }) => {
+export const getCompletedBooks = async () => {
+    try {
+        const response = await apiClient.get(API_ENDPOINTS.COMPLETED_BOOKS);
+        if (response.data.success) {
+            return { success: true, data: response.data.data };
+        }
+        return { success: false, message: response.data.message };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Failed to fetch completed books' };
+    }
+};
+
+export const updateReadingStats = async (stats: { pagesRead?: number, timeSpent?: number, totalSessionTime?: number }) => {
     try {
         const response = await apiClient.post(API_ENDPOINTS.UPDATE_STATS, stats);
         if (response.data.success) {
@@ -189,5 +217,24 @@ export const updateReadingStats = async (stats: { pagesRead?: number, timeSpent?
         return { success: false, message: response.data.message };
     } catch (error: any) {
         return { success: false, message: error.response?.data?.message || 'Failed to update reading stats' };
+    }
+};
+
+// Khalti Payment Services
+export const initiateKhaltiPayment = async (paymentData: { amount: number, purchase_order_id?: string, purchase_order_name?: string }) => {
+    try {
+        const response = await apiClient.post(API_ENDPOINTS.KHALTI_INITIATE, paymentData);
+        return { success: response.data.success, data: response.data.data };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Failed to initiate payment' };
+    }
+};
+
+export const verifyKhaltiPayment = async (pidx: string, userId: string) => {
+    try {
+        const response = await apiClient.get(`${API_ENDPOINTS.KHALTI_VERIFY}?pidx=${pidx}&userId=${userId}`);
+        return { success: response.data.success, data: response.data.data };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Failed to verify payment' };
     }
 };

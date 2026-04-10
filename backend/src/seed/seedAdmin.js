@@ -14,8 +14,8 @@ dotenv.config({ path: resolve(__dirname, "../../.env") });
 import userModel from "../model/user.model.js";
 
 // ─── Admin Details ────────────────────────────────────────────────────────────
-const ADMIN_NAME = "Pranjali Prasai";
-const ADMIN_EMAIL = "pranjaliprasai1234@gmail.com";
+const ADMIN_NAME = "Pranjal Prasai";
+const ADMIN_EMAIL = "pranjalprasai1234@gmail.com";
 const ADMIN_PASSWORD = "Admin@1234"; // Strong password as per requirements
 
 // ─── Seed Function ────────────────────────────────────────────────────────────

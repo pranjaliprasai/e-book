@@ -1,4 +1,5 @@
 import {
+    createUserService,
     getAllUsersService,
     deleteUserService,
     updateUserService,
@@ -6,12 +7,33 @@ import {
     getFavoritesService,
     saveProgressService,
     getProgressService,
+    deleteProgressService,
     getCurrentReadingService,
     updateReadingStatsService,
+    getCompletedBooksService,
 } from "../service/user.service.js";
 import successResponse from "../utils/success.response.js";
 import userModel from "../model/user.model.js";
 import { AppError } from "../utils/error.js";
+
+export const createUserController = async (req, res, next) => {
+    try {
+        const { name, email, password, role } = req.body;
+        const newUser = await createUserService({ name, email, password, role });
+        
+        successResponse(
+            {
+                success: true,
+                message: "User created successfully",
+                data: newUser,
+            },
+            res
+        );
+    } catch (error) {
+        console.error("Error in createUserController:", error);
+        next(error);
+    }
+};
 
 export const getAllUsersController = async (req, res, next) => {
     try {
@@ -71,15 +93,43 @@ export const updateUserController = async (req, res, next) => {
 export const getMyProfileController = async (req, res, next) => {
     try {
         const userId = req.user.userId;
-        const user = await userModel.findById(userId).select("-password");
+        let user = await userModel.findById(userId).select("-password");
         if (!user) {
             throw new AppError("User not found", 404);
         }
+
+        if (!user.readingStats) {
+            user.readingStats = {
+                totalPagesRead: 0,
+                totalReadingTime: 0,
+                pagesReadToday: 0,
+                lastReadDay: "",
+                booksReadThisMonth: 0,
+                readingTimeThisMonth: 0,
+                highestReadingSessionMonth: 0,
+                highestReadingSessionEver: 0,
+                pagesReadThisMonth: 0,
+                lastReadMonth: "",
+                achievedMilestones: []
+            };
+            await user.save();
+        }
+        // Dynamic Achievement & Completion Sync
+        let finalUser = user.toObject();
+        try {
+            const milestoneModel = (await import("../model/milestone.model.js")).default;
+            const progressModel = (await import("../model/progress.model.js")).default;
+            
+            finalUser.readingStats.totalMilestonesSet = await milestoneModel.countDocuments({ user: userId });
+            finalUser.readingStats.completedBooksCount = await progressModel.countDocuments({ user: userId, progress: { $gte: 99 } });
+            finalUser.readingStats.booksInProgressCount = await progressModel.countDocuments({ user: userId, progress: { $gt: 0, $lt: 99 } });
+        } catch (e) { console.warn("Sync failed:", e.message); }
+
         successResponse(
             {
                 success: true,
                 message: "Profile fetched successfully",
-                data: user,
+                data: finalUser,
             },
             res
         );
@@ -94,7 +144,6 @@ export const updateMyProfileController = async (req, res, next) => {
         const userId = req.user.userId;
         const updateData = { ...req.body };
 
-        // Handle profile picture if uploaded
         if (req.file) {
             updateData.picture = `/uploads/profiles/${req.file.filename}`;
         }
@@ -223,6 +272,43 @@ export const updateReadingStatsController = async (req, res, next) => {
         );
     } catch (error) {
         console.error("Error in updateReadingStatsController:", error);
+        next(error);
+    }
+};
+
+export const getCompletedBooksController = async (req, res, next) => {
+    try {
+        const userId = req.user.userId;
+        const books = await getCompletedBooksService(userId);
+        successResponse(
+            {
+                success: true,
+                message: "Completed books fetched successfully",
+                data: books,
+            },
+            res
+        );
+    } catch (error) {
+        console.error("Error in getCompletedBooksController:", error);
+        next(error);
+    }
+};
+
+export const deleteProgressController = async (req, res, next) => {
+    try {
+        const { bookId } = req.params;
+        const userId = req.user.userId;
+        await deleteProgressService(userId, bookId);
+        successResponse(
+            {
+                success: true,
+                message: "Progress deleted successfully",
+                data: null,
+            },
+            res
+        );
+    } catch (error) {
+        console.error("Error in deleteProgressController:", error);
         next(error);
     }
 };

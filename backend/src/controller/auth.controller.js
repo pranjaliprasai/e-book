@@ -2,6 +2,8 @@ import {
   forgetPasswordService,
   googleAuthService,
   googleCallbackService,
+  googleCodeService,
+  googleIdTokenService,
   loginService,
   registerService,
   resetPasswordService,
@@ -109,6 +111,50 @@ export const googleCallbackController = async (req, res, next) => {
     );
   } catch (error) {
     console.error("Error in googleCallbackController:", error);
+    next(error);
+  }
+};
+
+/**
+ * Accepts a Google ID Token from the mobile app and exchanges it for an app JWT.
+ * Works with expo-auth-session's useIdTokenAuthRequest hook.
+ */
+export const googleIdTokenController = async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+    const { resData, token } = await googleIdTokenService(idToken);
+    successResponse(
+      {
+        success: true,
+        message: "Google login successful",
+        data: { ...resData, token },
+      },
+      res
+    );
+  } catch (error) {
+    console.error("Error in googleIdTokenController:", error);
+    next(error);
+  }
+};
+
+/**
+ * PKCE Code Exchange — used by the mobile app (expo-auth-session, no native client IDs needed).
+ * Receives { code, codeVerifier, redirectUri } and exchanges them with Google.
+ */
+export const googleCodeController = async (req, res, next) => {
+  try {
+    const { code, codeVerifier, redirectUri } = req.body;
+    const { resData, token } = await googleCodeService(code, codeVerifier, redirectUri);
+    successResponse(
+      {
+        success: true,
+        message: "Google login successful",
+        data: { ...resData, token },
+      },
+      res
+    );
+  } catch (error) {
+    console.error("Error in googleCodeController:", error);
     next(error);
   }
 };

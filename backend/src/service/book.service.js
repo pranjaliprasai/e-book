@@ -1,7 +1,11 @@
 import bookModel from "../model/book.model.js";
+import userModel from "../model/user.model.js";
+import highlightModel from "../model/highlight.model.js";
+import progressModel from "../model/progress.model.js";
 import { AppError } from "../utils/error.js";
 import fs from "fs";
 import path from "path";
+import mongoose from "mongoose";
 
 export const addBookService = async (bookData) => {
     try {
@@ -30,35 +34,71 @@ export const addBookService = async (bookData) => {
     }
 };
 
-export const getBookByIdService = async (id) => {
+export const getBookByIdService = async (bookId, user) => {
     try {
-        const book = await bookModel.findById(id);
+        const book = await bookModel.findById(bookId);
         if (!book) {
             throw new AppError("Book not found", 404);
         }
-        return book;
+
+        // Admins can see everything
+        if (user && user.role === 'admin') {
+            return book;
+        }
+
+        const bookObj = book.toObject();
+
+        if (user) {
+            const fullUser = await userModel.findById(user.userId);
+            if (!fullUser) throw new AppError("User not found", 404);
+
+            const isSubscribed = fullUser.isSubscribed &&
+                fullUser.subscriptionExpiry &&
+                (new Date(fullUser.subscriptionExpiry) > new Date());
+
+            const FREE_BOOK_LIMIT = 14;
+            const bookIdStr = bookId.toString();
+            const userReadBooks = fullUser.readBooks || [];
+            const alreadyRead = userReadBooks.some(id => id && id.toString() === bookIdStr);
+
+            console.log(`[Book Service] User: ${fullUser.email} | Read: ${userReadBooks.length} | AlreadyRead: ${alreadyRead} | Limit: ${FREE_BOOK_LIMIT}`);
+
+            if (!isSubscribed) {
+                if (alreadyRead) {
+                    return bookObj;
+                } else if (userReadBooks.length >= FREE_BOOK_LIMIT) {
+                    console.log(`[Book Service] Locking book for ${fullUser.email} (Limit reached)`);
+                    bookObj.pdfUrl = ""; // Remove PDF URL
+                    bookObj.isLocked = true;
+                    return bookObj;
+                } else {
+                    // Add to readBooks
+                    console.log(`[Book Service] Allowing new book read for ${fullUser.email}`);
+                    if (!fullUser.readBooks) fullUser.readBooks = [];
+                    fullUser.readBooks.push(bookId);
+                    await fullUser.save();
+                    return bookObj;
+                }
+            }
+        }
+
+        return bookObj;
     } catch (error) {
         console.error("Error in getBookByIdService:", error);
         throw error;
     }
 };
 
-export const getAllBooksService = async (genre, isDiscovery, limit, search, source) => {
+export const getAllBooksService = async (genre, isDiscovery, limit, search, source, page = 1) => {
     try {
         const query = {};
         if (genre) query.genre = genre;
 
         // Only apply isDiscovery filter when NOT doing a text search OR specific category lookup
         // (If source or genre is provided, user wants specific category content regardless of discovery status)
-        if (!search && !source && !genre && isDiscovery !== undefined) {
+        if (isDiscovery !== undefined) {
             const isDiscVal = isDiscovery === 'true' || isDiscovery === true;
-            if (isDiscVal) {
-                query.isDiscovery = true;
-            } else {
-                // If the app explicitly asks for non-discovery books, we respect it.
-                // However, we'll keep it as $ne: true for compatibility.
-                query.isDiscovery = { $ne: true };
-            }
+            query.isDiscovery = isDiscVal;
         }
 
         // Filter by source (Gutenberg or OpenLibrary) based on ISBN prefix
@@ -80,15 +120,27 @@ export const getAllBooksService = async (genre, isDiscovery, limit, search, sour
         }
 
         console.log("[DB] => Executing Mongo Query:", JSON.stringify(query));
+        
+        // Get total count for pagination
+        const total = await bookModel.countDocuments(query);
+        
         let mongoQuery = bookModel.find(query).sort({ createdAt: -1 });
+        
         if (limit) {
-            mongoQuery = mongoQuery.limit(parseInt(limit, 10));
+            const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+            mongoQuery = mongoQuery.skip(skip).limit(parseInt(limit, 10));
         }
 
         console.log("[DB] => Awaiting Mongo...");
         const books = await mongoQuery;
-        console.log(`[DB] <= Mongo Returned ${books?.length} documents`);
-        return books;
+        console.log(`[DB] <= Mongo Returned ${books?.length} documents out of ${total}`);
+        
+        return {
+            books,
+            total,
+            page: parseInt(page, 10),
+            totalPages: limit ? Math.ceil(total / parseInt(limit, 10)) : 1
+        };
     } catch (error) {
         console.error("Error in getAllBooksService:", error);
         throw error;
@@ -149,26 +201,56 @@ export const deleteBookService = async (id) => {
             throw new AppError("Book not found", 404);
         }
 
-        console.log(`Book found: ${book.title}. Checking files...`);
+        console.log(`Book found: ${book.title}. Starting cleanup...`);
 
-        // Delete associated files if they are local paths
-        if (book.pdfUrl && !book.pdfUrl.startsWith("http")) {
-            console.log(`Checking PDF file: ${book.pdfUrl}`);
-            if (fs.existsSync(book.pdfUrl)) {
-                console.log(`Deleting PDF: ${book.pdfUrl}`);
-                fs.unlinkSync(book.pdfUrl);
+        // 1. Delete associated files (pdf & coverImageUrl) if they are local paths
+        // We use try-catch here so that if the file is already gone, the DB deletion still proceeds.
+        const deleteFile = (filePath, type) => {
+            if (filePath && !filePath.startsWith("http")) {
+                try {
+                    const fullPath = path.resolve(filePath);
+                    if (fs.existsSync(fullPath)) {
+                        console.log(`Deleting ${type}: ${fullPath}`);
+                        fs.unlinkSync(fullPath);
+                    } else {
+                        console.log(`${type} not found at ${fullPath}, skipping unlink`);
+                    }
+                } catch (err) {
+                    console.error(`Failed to delete ${type} at ${filePath}:`, err.message);
+                    // We don't throw here, just log and continue
+                }
             }
-        }
-        if (book.coverImageUrl && !book.coverImageUrl.startsWith("http")) {
-            console.log(`Checking Cover image: ${book.coverImageUrl}`);
-            if (fs.existsSync(book.coverImageUrl)) {
-                console.log(`Deleting Cover: ${book.coverImageUrl}`);
-                fs.unlinkSync(book.coverImageUrl);
-            }
-        }
+        };
 
+        deleteFile(book.pdfUrl, "PDF");
+        deleteFile(book.coverImageUrl, "Cover Image");
+
+        // 2. Cascade cleanup in other models
+        console.log("Cleaning up user references and associated data...");
+        
+        const bookObjectId = new mongoose.Types.ObjectId(id);
+
+        await Promise.all([
+            // Remove from User.favorites
+            userModel.updateMany(
+                { favorites: bookObjectId },
+                { $pull: { favorites: bookObjectId } }
+            ),
+            // Remove from User.readBooks
+            userModel.updateMany(
+                { readBooks: bookObjectId },
+                { $pull: { readBooks: bookObjectId } }
+            ),
+            // Delete all highlights for this book
+            highlightModel.deleteMany({ bookId: bookObjectId }),
+            
+            // Delete reading progress for this book
+            progressModel.deleteMany({ book: bookObjectId })
+        ]);
+
+        // 3. Finally delete the book document
         await bookModel.findByIdAndDelete(id);
-        console.log("Book successfully deleted from database");
+        console.log("Book successfully deleted from database and cleanup complete.");
         return true;
     } catch (error) {
         console.error("Error in deleteBookService:", error);

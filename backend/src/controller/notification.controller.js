@@ -34,3 +34,14 @@ export const markAllAsRead = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const createNotification = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { title, message, type, data } = req.body;
+    const notification = await notificationService.createNotificationService(userId, title, message, type, data);
+    res.status(201).json({ success: true, data: notification });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

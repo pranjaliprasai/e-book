@@ -11,10 +11,14 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { getBookById, deleteBook, toggleFavorite } from '../components/services/bookServices';
+import { getBookById, deleteBook, toggleFavorite, initiateKhaltiPayment } from '../components/services/bookServices';
 import { API_BASE_URL } from '../components/constants/api';
 import { useAuth } from '@/hooks/use-auth';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import SubscriptionModal from '../components/SubscriptionModal';
+import CommentSection from '../components/CommentSection';
+import RecommendationSection from '../components/RecommendationSection';
+
 
 const IMAGE_BASE_URL = API_BASE_URL.replace('/api', '');
 
@@ -24,6 +28,8 @@ export default function BookDetails() {
     const [loading, setLoading] = useState(true);
     const [isFavoriting, setIsFavoriting] = useState(false);
     const [isFavorite, setIsFavorite] = useState(false);
+    const [isSubscriptionModalVisible, setIsSubscriptionModalVisible] = useState(false);
+    const [isPaymentInitiating, setIsPaymentInitiating] = useState(false);
     const { user, updateUser } = useAuth();
     const router = useRouter();
 
@@ -35,11 +41,21 @@ export default function BookDetails() {
                 if (res.success) {
                     setBook(res.data);
                 } else {
-                    Alert.alert("Error", "Book not found");
-                    router.back();
+                    // Check if it's specifically a tunnel/network error (HTML response)
+                    const errorMsg = res.message || "Book not found";
+                    Alert.alert("Notice", errorMsg);
+                    
+                    if (router.canGoBack()) {
+                        router.back();
+                    } else {
+                        // If no back history, just stay here or replace with home
+                        router.replace('/(tabs)');
+                    }
                 }
             } catch (err) {
-                console.error(err);
+                console.error("Fetch details error:", err);
+                if (router.canGoBack()) router.back();
+                else router.replace('/(tabs)');
             } finally {
                 setLoading(false);
             }
@@ -78,6 +94,11 @@ export default function BookDetails() {
     const handleRead = () => {
         if (!book) return;
 
+        if (book.isLocked) {
+            setIsSubscriptionModalVisible(true);
+            return;
+        }
+
         let pdfUrl = book.pdfUrl;
         let finalUrl = '';
 
@@ -115,6 +136,33 @@ export default function BookDetails() {
         }
     };
 
+    const handleSubscribe = async () => {
+        setIsSubscriptionModalVisible(false);
+        setIsPaymentInitiating(true);
+        try {
+            const res = await initiateKhaltiPayment({
+                amount: 500, // NPR 500
+                purchase_order_name: "Premium Subscription",
+            });
+
+            if (res.success && res.data.payment_url) {
+                router.push({
+                    pathname: '/KhaltiPayment',
+                    params: { 
+                        paymentUrl: res.data.payment_url,
+                        pidx: res.data.pidx
+                    }
+                });
+            } else {
+                Alert.alert("Error", res.message || "Failed to initiate payment");
+            }
+        } catch (err) {
+            Alert.alert("Error", "Failed to connect to payment gateway");
+        } finally {
+            setIsPaymentInitiating(false);
+        }
+    };
+
     if (loading) {
         return (
             <View style={styles.centerContainer}>
@@ -127,6 +175,19 @@ export default function BookDetails() {
 
     return (
         <ScrollView style={styles.container as any}>
+            <SubscriptionModal
+                visible={isSubscriptionModalVisible}
+                onClose={() => setIsSubscriptionModalVisible(false)}
+                onSubscribe={handleSubscribe}
+            />
+
+            {isPaymentInitiating && (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,255,255,0.7)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }]}>
+                    <ActivityIndicator size="large" color="#6B8E23" />
+                    <Text style={{ marginTop: 10, fontWeight: '700', color: '#6B8E23' }}>Initiating Payment...</Text>
+                </View>
+            )}
+
             <Image
                 source={{
                     uri: book.coverImageUrl.startsWith('http')
@@ -171,8 +232,19 @@ export default function BookDetails() {
                 </View>
 
                 <TouchableOpacity style={styles.readButton as any} onPress={handleRead}>
-                    <Text style={styles.readButtonText as any}>Read More</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        {book.isLocked && <MaterialCommunityIcons name="lock" size={20} color="#FFF" style={{ marginRight: 8 }} />}
+                        <Text style={styles.readButtonText as any}>{book.isLocked ? "Unlock Full Book" : "Read More"}</Text>
+                    </View>
                 </TouchableOpacity>
+
+                {/* Only show 'Remove from Collection' for actual local/imported books */}
+                {(!book.isDiscovery && !book.isbn?.startsWith('GUT-') && !book.isbn?.startsWith('OL-')) && (
+                    <TouchableOpacity style={styles.removeButton as any} onPress={handleDelete}>
+                        <MaterialCommunityIcons name="trash-can-outline" size={20} color="#CD5C5C" />
+                        <Text style={styles.removeButtonText as any}>Remove from Collection</Text>
+                    </TouchableOpacity>
+                )}
 
                 {isFavorite && (
                     <TouchableOpacity
@@ -191,13 +263,12 @@ export default function BookDetails() {
                     </TouchableOpacity>
                 )}
 
-                {/* Only show 'Remove from Collection' for actual local/imported books */}
-                {(!book.isDiscovery && !book.isbn?.startsWith('GUT-') && !book.isbn?.startsWith('OL-')) && (
-                    <TouchableOpacity style={styles.removeButton as any} onPress={handleDelete}>
-                        <MaterialCommunityIcons name="trash-can-outline" size={20} color="#CD5C5C" />
-                        <Text style={styles.removeButtonText as any}>Remove from Collection</Text>
-                    </TouchableOpacity>
-                )}
+
+                <CommentSection bookId={book._id} />
+
+
+
+                <RecommendationSection bookId={book._id} />
             </View>
         </ScrollView>
     );

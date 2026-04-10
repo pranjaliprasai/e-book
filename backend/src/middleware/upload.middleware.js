@@ -48,6 +48,6 @@ export const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB limit
+        fileSize: 100 * 1024 * 1024, // 100 MB — accommodates full-length PDFs
     },
 });

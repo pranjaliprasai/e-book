@@ -15,7 +15,6 @@ import { login as loginService, register, forgotPassword, resetPassword, googleL
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/hooks/use-auth";
-import * as Google from 'expo-auth-session/providers/google';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import Animated, {
@@ -30,6 +29,17 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 WebBrowser.maybeCompleteAuthSession();
+
+// ─── Google OAuth config ──────────────────────────────────────────────────────
+// This redirect URI must be added to your Google Cloud Console web client's
+// "Authorized redirect URIs" list: com.smartshelf.app://google-auth
+const GOOGLE_WEB_CLIENT_ID = '179153186138-iicioq24309qj7ccv79pi4nljcjf0p55.apps.googleusercontent.com';
+// Forced HTTPS Proxy URI for Google Auth (Required for SDK 54+ Expo Go)
+const GOOGLE_REDIRECT_URI = 'https://auth.expo.io/@pranjaliprasai/SmartShelf';
+const GOOGLE_DISCOVERY = {
+  authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+  tokenEndpoint: 'https://oauth2.googleapis.com/token',
+};
 
 export default function Login() {
   const router = useRouter();
@@ -48,28 +58,42 @@ export default function Login() {
   const modeAnim = useSharedValue(0); // 0 for signin, 1 for signup
   const forgotAnim = useSharedValue(0); // 1 when in forgot password mode
 
-  const redirectUri = AuthSession.makeRedirectUri({
-    scheme: 'smartshelf',
-    path: 'google-auth',
-  });
+  // Uses AuthSession directly
+  const [request, response, promptAsync] = AuthSession.useAuthRequest(
+    {
+      clientId: GOOGLE_WEB_CLIENT_ID,
+      scopes: ['openid', 'profile', 'email'],
+      responseType: AuthSession.ResponseType.Code,
+      redirectUri: GOOGLE_REDIRECT_URI,
+      usePKCE: true,
+      extraParams: { access_type: 'offline' },
+    },
+    GOOGLE_DISCOVERY
+  );
 
   useEffect(() => {
-    console.log('🔗 [Google Auth] REDIRECT URI:', redirectUri);
-    console.log('⚠️ [Action Required] Ensure this URL is whitelisted in your Native Client IDs (iOS/Android) in Google Console.');
-  }, [redirectUri]);
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    // IMPORTANT: Replace these with your actual NATIVE Client IDs from Google Cloud Console
-    iosClientId: 'YOUR_IOS_NATIVE_CLIENT_ID.apps.googleusercontent.com',
-    androidClientId: 'YOUR_ANDROID_NATIVE_CLIENT_ID.apps.googleusercontent.com',
-    webClientId: '179153186138-iicioq24309qj7ccv79pi4nljcjf0p55.apps.googleusercontent.com',
-    redirectUri: redirectUri,
-  });
+    if (__DEV__) {
+        console.log('🔄 [Google Auth] PROXY REDIRECT URI:');
+        console.log('🔗', GOOGLE_REDIRECT_URI);
+        console.log('⚠️ [Action] Paste this into Google Console > Authorized redirect URIs');
+    }
+  }, []);
 
   useEffect(() => {
     if (response?.type === 'success') {
       const { code } = response.params;
-      handleGoogleLogin(code, redirectUri);
+      const codeVerifier = request?.codeVerifier;
+      if (__DEV__) console.log('✅ [Google Auth] Code received:', code ? 'YES' : 'NO');
+      if (code) {
+        handleGoogleLogin(code, codeVerifier);
+      } else {
+        Alert.alert('Google Login Failed', 'No authorization code received.');
+      }
+    } else if (response?.type === 'error') {
+      if (__DEV__) console.error('❌ [Google Auth] Session Error:', response.error);
+      Alert.alert('Google Login Error', response.error?.message || 'Something went wrong.');
+    } else if (response?.type === 'cancel') {
+        if (__DEV__) console.log('🚫 [Google Auth] User cancelled.');
     }
   }, [response]);
 
@@ -82,19 +106,22 @@ export default function Login() {
     }
   }, [authMode]);
 
-  const handleGoogleLogin = async (code: string, uri: string) => {
+  const handleGoogleLogin = async (code: string, codeVerifier?: string) => {
     setIsLoading(true);
+    if (__DEV__) console.log('🚀 [Google Login] Initiating backend exchange...');
     try {
-      const res = await googleLogin(code, uri);
+      const res = await googleLogin(code, codeVerifier, GOOGLE_REDIRECT_URI);
       if (__DEV__) console.log('🔍 [Google Login Service Response]:', res);
 
       if (res.success) {
         await login(res.user, res.token);
+        if (__DEV__) console.log('🔄 [Google Login] Session synced. Redirecting to home...');
         router.replace("/");
       } else {
-        Alert.alert("Google Login Failed", res.message);
+        Alert.alert("Google Login Failed", res.message || 'Please try again.');
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (__DEV__) console.error('🚨 [Google Login] Catch error:', error);
       Alert.alert("Error", "An unexpected error occurred during Google Login");
     } finally {
       setIsLoading(false);
@@ -166,8 +193,16 @@ export default function Login() {
         if (__DEV__) console.log('🔍 [Login Service Response]:', res);
 
         if (res.success) {
+          // 1. Sync session
           await login(res.user, res.token);
-          router.replace("/");
+          
+          // 2. Allow a short stabilization period
+          if (__DEV__) console.log('🔄 [Login] Session synced. Stabilizing for 2s...');
+          
+          // 3. Complete login after 2s delay
+          setTimeout(() => {
+            router.replace("/");
+          }, 2000);
         } else {
           Alert.alert("Login Failed", res.message);
         }

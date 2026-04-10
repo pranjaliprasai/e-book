@@ -1,4 +1,5 @@
 // error.js
+import multer from "multer";
 const { Error } = global;
 
 /**
@@ -8,12 +9,18 @@ export function errorConverter(err, req, res, next) {
   let statusCode = 500;
   let message = "Internal Server Error";
 
-  if (err instanceof HttpException) {
+  // Handle Multer-specific errors (file size, wrong type, etc.)
+  if (err instanceof multer.MulterError) {
+    statusCode = 400;
+    if (err.code === "LIMIT_FILE_SIZE") {
+      message = `File too large. Maximum allowed size is 100 MB.`;
+    } else {
+      message = `Upload error: ${err.message}`;
+    }
+  } else if (err instanceof HttpException) {
     statusCode = err.status;
     message = err.message;
-  }
-
-  if (err instanceof AppError) {
+  } else if (err instanceof AppError) {
     statusCode = err.statusCode;
     message = err.message;
   }

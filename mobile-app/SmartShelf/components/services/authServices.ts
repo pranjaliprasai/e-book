@@ -25,20 +25,28 @@ export const login = async (email: string, password: string) => {
     }
 };
 
-export const googleLogin = async (code: string, redirectUri: string) => {
+export const googleLogin = async (code: string, codeVerifier?: string, redirectUri?: string) => {
     try {
-        const response = await apiClient.get(API_ENDPOINTS.GOOGLE_CALLBACK, {
-            params: { code, redirect_uri: redirectUri }
+        if (__DEV__) console.log('📤 [Auth Service] Sending Google code to backend:', { code: code ? 'received' : 'missing', redirectUri });
+        const response = await apiClient.post(API_ENDPOINTS.GOOGLE_CODE_LOGIN, {
+            code,
+            codeVerifier,
+            redirectUri,
         });
 
-        // Backend: { data: { name, email, ..., token } }
         if (response.data.success) {
             const { token, ...user } = response.data.data;
             return { success: true, token, user };
         }
 
+        if (__DEV__) console.warn('⚠️ [Auth Service] Google login backend returned success:false', response.data);
         return { success: false, message: response.data.message };
     } catch (error: any) {
+        if (__DEV__) {
+            const errorData = error.response?.data;
+            const status = error.response?.status;
+            console.error(`🚨 [Auth Service] Google login failed | Status: ${status} | Data:`, errorData || error.message);
+        }
         return {
             success: false,
             message: error.response?.data?.message || 'Google login failed'
@@ -106,6 +114,21 @@ export const updateProfile = async (updateData: any) => {
         return {
             success: false,
             message: error.response?.data?.message || 'Failed to update profile'
+        };
+    }
+};
+
+export const getProfile = async () => {
+    try {
+        const response = await apiClient.get(`${API_ENDPOINTS.USER}/profile`);
+        if (response.data.success) {
+            return { success: true, user: response.data.data };
+        }
+        return { success: false, message: response.data.message };
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Failed to fetch profile'
         };
     }
 };

@@ -185,7 +185,7 @@ export default function BookListing() {
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
             <Stack.Screen options={{ title, headerShown: false }} />
 
             <View style={styles.headerRow}>

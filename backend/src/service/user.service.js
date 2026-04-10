@@ -4,6 +4,34 @@ import bookModel from "../model/book.model.js";
 import { AppError } from "../utils/error.js";
 import { hashPassword } from "../helper/auth.helper.js";
 
+export const createUserService = async (userData) => {
+    try {
+        const { name, email, password, role } = userData;
+        
+        const existingUser = await userModel.findOne({ email });
+        if (existingUser) {
+            throw new AppError("A user with this email already exists", 400);
+        }
+
+        const passwordHash = await hashPassword(password);
+        
+        const newUser = await userModel.create({
+            name,
+            email,
+            password: passwordHash,
+            role: role || 'user',
+            status: 'active'
+        });
+
+        const userObj = newUser.toObject();
+        delete userObj.password;
+        return userObj;
+    } catch (error) {
+        console.error("Error in createUserService:", error);
+        throw error;
+    }
+};
+
 export const getAllUsersService = async (search) => {
     try {
         const query = {};
@@ -108,6 +136,49 @@ export const saveProgressService = async (userId, bookId, progress) => {
             { progress, lastRead: new Date() },
             { upsert: true, new: true }
         );
+
+        if (progress >= 99) {
+            const user = await userModel.findById(userId);
+            if (user) {
+                const bookIdStr = bookId.toString();
+                const alreadyRead = user.readBooks.some(id => id.toString() === bookIdStr);
+                
+                if (!alreadyRead) {
+                    user.readBooks.push(bookId);
+                    
+                    // Update monthly books read
+                    const now = new Date();
+                    const thisMonthStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+                    
+                    if (!user.readingStats) {
+                        user.readingStats = {
+                            totalPagesRead: 0,
+                            totalReadingTime: 0,
+                            pagesReadToday: 0,
+                            lastReadDay: "",
+                            booksReadThisMonth: 0,
+                            readingTimeThisMonth: 0,
+                            pagesReadThisMonth: 0,
+                            lastReadMonth: "",
+                            achievedMilestones: []
+                        };
+                    }
+
+                    if (user.readingStats.lastReadMonth !== thisMonthStr) {
+                         user.readingStats.booksReadThisMonth = 1;
+                         user.readingStats.lastReadMonth = thisMonthStr;
+                         // Also reset other monthly fields
+                         user.readingStats.readingTimeThisMonth = 0;
+                         user.readingStats.pagesReadThisMonth = 0;
+                    } else {
+                         user.readingStats.booksReadThisMonth += 1;
+                    }
+                    
+                    await user.save();
+                }
+            }
+        }
+        
         console.log(`[Service] Progress saved:`, result ? "Success" : "Failed");
         return result;
     } catch (error) {
@@ -126,6 +197,16 @@ export const getProgressService = async (userId, bookId) => {
     }
 };
 
+export const deleteProgressService = async (userId, bookId) => {
+    try {
+        await progressModel.findOneAndDelete({ user: userId, book: bookId });
+        return true;
+    } catch (error) {
+        console.error("Error in deleteProgressService:", error);
+        throw error;
+    }
+};
+
 export const getCurrentReadingService = async (userId) => {
     try {
         console.log(`[Service] Fetching current reading for user: ${userId}`);
@@ -135,14 +216,16 @@ export const getCurrentReadingService = async (userId) => {
 
         console.log(`[Service] Found ${progresses.length} progress records`);
 
-        // Filter out any entries where book might have been deleted
-        const results = progresses.filter(p => p.book).map(p => ({
-            ...p.book.toObject(),
-            progress: p.progress,
-            lastRead: p.lastRead
-        }));
-
-        console.log(`[Service] Returning ${results.length} valid current reading books`);
+        // Filter out completed books (progress >= 99) and deleted books
+        const results = progresses
+            .filter(p => p.book && p.progress < 99)
+            .map(p => ({
+                ...p.book.toObject(),
+                progress: p.progress,
+                lastRead: p.lastRead
+            }));
+ 
+        console.log(`[Service] Returning ${results.length} valid current reading books (filtered completed)`);
         return results;
     } catch (error) {
         console.error("Error in getCurrentReadingService:", error);
@@ -150,7 +233,23 @@ export const getCurrentReadingService = async (userId) => {
     }
 };
 
-export const updateReadingStatsService = async (userId, { pagesRead = 0, timeSpent = 0 }) => {
+export const getCompletedBooksService = async (userId) => {
+    try {
+        // Fetch progress records where progress is 99% or more
+        const finishedProgress = await progressModel.find({ user: userId, progress: { $gte: 99 } })
+            .populate("book");
+            
+        // Return clear book objects
+        return finishedProgress
+            .filter(p => p.book)
+            .map(p => p.book);
+    } catch (error) {
+        console.error("Error in getCompletedBooksService:", error);
+        throw error;
+    }
+};
+
+export const updateReadingStatsService = async (userId, { pagesRead = 0, timeSpent = 0, totalSessionTime = 0 }) => {
     try {
         const user = await userModel.findById(userId);
         if (!user) throw new AppError("User not found", 404);
@@ -159,12 +258,59 @@ export const updateReadingStatsService = async (userId, { pagesRead = 0, timeSpe
             user.readingStats = {
                 totalPagesRead: 0,
                 totalReadingTime: 0,
+                pagesReadToday: 0,
+                lastReadDay: "",
+                booksReadThisMonth: 0,
+                readingTimeThisMonth: 0,
+                pagesReadThisMonth: 0,
+                lastReadMonth: "",
                 achievedMilestones: []
             };
         }
 
+        const now = new Date();
+        const todayDateStr = now.toISOString().split('T')[0];
+        const thisMonthStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+
+        // Daily reset
+        if (user.readingStats.lastReadDay !== todayDateStr) {
+            user.readingStats.pagesReadToday = 0;
+            user.readingStats.readingTimeToday = 0;
+            user.readingStats.lastReadDay = todayDateStr;
+        }
+
+        // Monthly reset
+        if (user.readingStats.lastReadMonth !== thisMonthStr) {
+            user.readingStats.booksReadThisMonth = 0;
+            user.readingStats.readingTimeThisMonth = 0;
+            user.readingStats.pagesReadThisMonth = 0;
+            user.readingStats.lastReadMonth = thisMonthStr;
+        }
+
+        user.readingStats.pagesReadToday += Number(pagesRead);
+        user.readingStats.readingTimeToday += Number(timeSpent);
         user.readingStats.totalPagesRead += Number(pagesRead);
         user.readingStats.totalReadingTime += Number(timeSpent);
+        user.readingStats.readingTimeThisMonth += Number(timeSpent);
+        user.readingStats.pagesReadThisMonth += Number(pagesRead);
+
+        // Update records
+        if (user.readingStats.readingTimeToday > (user.readingStats.highestReadingDayEver || 0)) {
+            user.readingStats.highestReadingDayEver = user.readingStats.readingTimeToday;
+        }
+        
+        if (Number(totalSessionTime) > (user.readingStats.highestReadingSessionEver || 0)) {
+            user.readingStats.highestReadingSessionEver = Number(totalSessionTime);
+        }
+
+        if (user.readingStats.pagesReadToday > (user.readingStats.highestPagesReadEver || 0)) {
+            user.readingStats.highestPagesReadEver = user.readingStats.pagesReadToday;
+        }
+
+        // Self-correction: Ensure monthly books read doesn't exceed lifetime total
+        if (user.readingStats.booksReadThisMonth > user.readBooks.length) {
+            user.readingStats.booksReadThisMonth = user.readBooks.length;
+        }
 
         const newMilestones = [];
         const PAGE_MILESTONES = [10, 20, 100, 300];

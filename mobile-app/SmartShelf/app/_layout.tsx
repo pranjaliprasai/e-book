@@ -47,10 +47,11 @@ function RootLayoutNav() {
                     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                     <Stack.Screen name="Login" options={{ headerShown: false }} />
                     <Stack.Screen name="Register" options={{ headerShown: false }} />
-                    <Stack.Screen name="BookListing" options={{ title: 'Books' }} />
-                    <Stack.Screen name="BookDetails" options={{ title: 'Book Details' }} />
+                    <Stack.Screen name="BookListing" options={{ headerShown: false }} />
+                    <Stack.Screen name="BookDetails" options={{ headerShown: false }} />
                     <Stack.Screen name="Reader" options={{ headerShown: false }} />
                     <Stack.Screen name="ReadingMilestones" options={{ title: 'Reading Milestones', headerShown: false }} />
+                    <Stack.Screen name="Notifications" options={{ title: 'Notifications', headerShown: false }} />
                 </Stack>
             </View>
             <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />

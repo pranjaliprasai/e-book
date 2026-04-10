@@ -13,6 +13,7 @@ import {
     ScrollView,
     Dimensions,
     Modal,
+    RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Image as RNImage } from 'react-native';
@@ -20,7 +21,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/use-auth';
-import { getBooks, importBook, deleteBook, getFavorites, getCurrentReadingBooks } from '../../components/services/bookServices';
+import { getBooks, importBook, deleteBook, getFavorites, getCurrentReadingBooks, deleteProgress } from '../../components/services/bookServices';
+import { getProfile } from '../../components/services/authServices';
 import { getNotifications, markAsRead, markAllAsRead } from '../../components/services/notificationServices';
 import { ExternalBook } from '../../components/services/externalBookServices';
 import { API_BASE_URL } from '../../components/constants/api';
@@ -333,87 +335,13 @@ const getStyles = (colors: any) => StyleSheet.create({
         fontSize: 10,
         fontWeight: '900',
     },
-    // Inbox Modal styles
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
-    },
-    inboxContainer: {
-        height: '80%',
-        backgroundColor: colors.background,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        paddingTop: 16,
-    },
-    inboxHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingBottom: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-    },
-    inboxTitle: {
-        fontSize: 20,
-        fontWeight: '900',
-        color: colors.text,
-    },
-    notifItem: {
-        padding: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-        flexDirection: 'row',
-    },
-    unreadItem: {
-        backgroundColor: colors.surface,
-    },
-    notifIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: colors.border,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 16,
-    },
-    notifContent: {
-        flex: 1,
-    },
-    notifTitle: {
-        fontSize: 15,
-        fontWeight: 'bold',
-        color: colors.text,
-    },
-    notifMessage: {
-        fontSize: 13,
-        color: colors.textMuted,
-        marginTop: 4,
-    },
-    notifTime: {
-        fontSize: 11,
-        color: colors.textMuted,
-        marginTop: 8,
-    },
-    emptyInbox: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 40,
-    },
-    emptyText: {
-        fontSize: 16,
-        color: colors.textMuted,
-        marginTop: 16,
-        textAlign: 'center',
-    },
 });
 
 export default function HomeScreen() {
     const router = useRouter();
     const { user, logout, updateUser, isLoading: authLoading } = useAuth();
     const { colors } = useTheme();
+    const styles = getStyles(colors);
 
     const [favoriteBooks, setFavoriteBooks] = useState<any[]>([]);
 
@@ -427,13 +355,24 @@ export default function HomeScreen() {
     const [localBooks, setLocalBooks] = useState<any[]>([]);
     const [currentReadingBooks, setCurrentReadingBooks] = useState<any[]>([]);
     const [gutenbergBooks, setGutenbergBooks] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true); // Start as true so it triggers the indicator while loadInitialData runs
     const [saving, setSaving] = useState<string | number | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
-    const [showInbox, setShowInbox] = useState(false);
+    const [userProfile, setUserProfile] = useState<any>(null);
+    const [hasConnectionError, setHasConnectionError] = useState(false);
+
+    // Initial load: Only show fullscreen loader if it's the very first time and we have NO data
+    const [isFirstLoad, setIsFirstLoad] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const retryCount = useRef(0);
+
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        loadInitialData().finally(() => setRefreshing(false));
+    }, []);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -444,56 +383,117 @@ export default function HomeScreen() {
 
 
     const loadInitialData = async () => {
+        // Prevent concurrent re-loads
+        if (loading && !isFirstLoad) return; 
+        
         setLoading(true);
+        setHasConnectionError(false);
+        const startTime = Date.now();
+
         try {
-            console.log('--- Loading Home Content ---');
+            console.log('--- Loading Home Content (Sequenced Strategy) ---');
 
-            // Collection: Featured Books (books explicitly added to collection)
-            const localRes = await getBooks(undefined, false, 15);
-            if (localRes.success) {
-                setLocalBooks(localRes.data || []);
+            // 1. Mandatory Profile Fetch first (ensures token is active and valid)
+            const profileRes = await getProfile();
+            if (profileRes.success) {
+               console.log(`⏱️ [Home] Profile verified in ${Date.now() - startTime}ms`);
+               setUserProfile(profileRes.user);
+               updateUser(profileRes.user);
+            } else {
+               console.warn('⚠️ [Home] Profile verification failed. Potential 401 or network drop.');
+               // If profile failed, we likely have a session issue
+               setHasConnectionError(true);
+               setLoading(false);
+               setIsFirstLoad(false);
+               return;
             }
 
-            // Fetch favorites
-            const favRes = await getFavorites();
-            if (favRes.success) {
-                setFavoriteBooks(favRes.data || []);
-            }
+            // 2. Fetch critical lists (Local, Progress, Reading)
+            const [localRes, favRes, readingRes] = await Promise.all([
+                getBooks(undefined, false, 15),
+                getFavorites(),
+                getCurrentReadingBooks()
+            ]);
 
-            // Fetch Current Reading
-            const readingRes = await getCurrentReadingBooks();
-            if (readingRes.success) {
-                setCurrentReadingBooks(readingRes.data || []);
-            }
+            if (localRes.success) setLocalBooks(localRes.data || []);
+            if (favRes.success) setFavoriteBooks(favRes.data || []);
+            if (readingRes.success) setCurrentReadingBooks(readingRes.data || []);
 
-            // Fetch Gutenberg Classics from DB
-            const gutRes = await getBooks(undefined, true, 15, undefined, 'Gutenberg');
-            if (gutRes.success) {
-                setGutenbergBooks(gutRes.data || []);
-            }
+            // 3. Persistent Gutenberg Discovery Logic (with Retry)
+            let discoverySuccessful = false;
+            let attempts = 0;
+            const MAX_ATTEMPTS = 3;
 
-            // Categories: fetch up to 100 books per category from Project Gutenberg
-            const genreData: { [key: string]: any[] } = {};
-            await Promise.all(CATEGORIES.map(async (genre) => {
-                const res = await getBooks(genre, true, 100, undefined, 'Gutenberg');
-                if (res.success && res.data?.length > 0) {
-                    genreData[genre] = res.data;
+            while (!discoverySuccessful && attempts < MAX_ATTEMPTS) {
+                attempts++;
+                console.log(`📡 [Home] Discovery Fetch Attempt ${attempts}/${MAX_ATTEMPTS}...`);
+                
+                // Try fetching discovery books (broad search first for best results)
+                const gutRes = await getBooks(undefined, true, 15);
+                
+                if (gutRes.success && gutRes.data?.length > 0) {
+                    setGutenbergBooks(gutRes.data);
+                    discoverySuccessful = true;
+                    console.log(`✅ [Home] Discovery success on attempt ${attempts}. Count: ${gutRes.data.length}`);
+                } else if (attempts < MAX_ATTEMPTS) {
+                    console.log(`⏳ [Home] Discovery empty/failed, retrying in ${800 * attempts}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, 800 * attempts));
                 }
-            }));
-
-            setCategorizedBooks(genreData);
-
-            // Fetch Notifications
-            const notifRes = await getNotifications();
-            if (notifRes.success) {
-                setNotifications(notifRes.data || []);
-                setUnreadCount(notifRes.unreadCount || 0);
             }
 
-        } catch (err) {
-            console.error('Error loading home data:', err);
+            // 4. Background Sequential Genre Fetch (Lowest priority, one at a time)
+            if (Object.keys(categorizedBooks).length === 0) {
+                (async () => {
+                    const topGenres = ['Fiction', 'Technology', 'Science Fiction', 'Mystery', 'History'];
+                    for (const genre of topGenres) {
+                        try {
+                            const res = await getBooks(genre, true, 20);
+                            if (res.success && res.data?.length > 0) {
+                                setCategorizedBooks(prev => ({ ...prev, [genre]: res.data }));
+                            }
+                        } catch (e) {}
+                    }
+                })();
+            }
+
+            // Notifications
+            try {
+                const notifRes = await getNotifications();
+                if (notifRes.success) {
+                    setNotifications(notifRes.data || []);
+                    setUnreadCount(notifRes.unreadCount || 0);
+                }
+            } catch (e) {}
+
+        } catch (err: any) {
+            console.error('❌ [Home] Critical error during load:', err.message);
+            setHasConnectionError(true);
         } finally {
-            setLoading(false);
+            console.log('🏁 [Home] Load sequence finished.');
+            
+            const hasData = localBooks.length > 0 || currentReadingBooks.length > 0 || gutenbergBooks.length > 0;
+
+            // AUTOMATIC RETRY: If this was the first load and we STILL have no books, 
+            // try one more time without stopping the spinner.
+            if (!hasConnectionError && 
+                !hasData && 
+                isFirstLoad &&
+                retryCount.current < 2) {
+                
+                retryCount.current += 1;
+                console.log(`🔄 [Home] No books found. Auto-retry ${retryCount.current}/2 in 2s...`);
+                // Keep loading true
+                setLoading(true);
+                setTimeout(() => {
+                    loadInitialData();
+                }, 2000);
+            } else {
+                setLoading(false);
+                setIsFirstLoad(false);
+                if (hasData) retryCount.current = 0; 
+            }
+
+            setRefreshing(false);
         }
     };
 
@@ -510,25 +510,7 @@ export default function HomeScreen() {
         setIsSearching(false);
     };
 
-    const handleMarkAsRead = async (id: string) => {
-        try {
-            await markAsRead(id);
-            setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
-            setUnreadCount(prev => Math.max(0, prev - 1));
-        } catch (err) {
-            console.error('Error marking as read:', err);
-        }
-    };
 
-    const handleMarkAllAsRead = async () => {
-        try {
-            await markAllAsRead();
-            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-            setUnreadCount(0);
-        } catch (err) {
-            console.error('Error marking all as read:', err);
-        }
-    };
 
     const handleSaveBook = async (book: ExternalBook) => {
         setSaving(book.id);
@@ -576,13 +558,67 @@ export default function HomeScreen() {
         }
     };
 
-    useFocusEffect(
-        useCallback(() => {
-            if (user) {
+    // One-time load on mount or when user changes (e.g. login/logout)
+    useEffect(() => {
+        // Log readiness for debugging
+        if (!authLoading) {
+            if (user?._id) {
+                console.log('🏁 [Home] Initial fetch triggered for user ID:', user._id);
                 loadInitialData();
+            } else if (!user) {
+                // Clear state on logout so the next user starts fresh
+                setLocalBooks([]);
+                setFavoriteBooks([]);
+                setCurrentReadingBooks([]);
+                setGutenbergBooks([]);
+                setCategorizedBooks({});
+                setHasConnectionError(false);
+                setIsFirstLoad(true); // Reset to show loader on next login
+                setLoading(true);
+                retryCount.current = 0;
+                console.log('🧹 [Home] Auth state cleared on logout');
             }
-        }, [user])
-    );
+        }
+    }, [user?._id, authLoading]); // Use primitive ID to avoid infinite loops from updateUser calls
+
+    // Failsafe: Ensure spinner disappears after 25s if something is stuck
+    // This is longer than 12s because slow tunnels (ngrok) and cold starts can take longer
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (loading) {
+                console.warn('⚠️ [Home] Loading failsafe triggered. Stopping spinner after 25s.');
+                setLoading(false);
+                setIsFirstLoad(false);
+            }
+        }, 25000);
+        return () => clearTimeout(timer);
+    }, [loading]);
+
+    const handleRemoveProgress = async (bookId: string) => {
+        Alert.alert(
+            "Remove Book",
+            "Are you sure you want to remove this book from Continue Reading?",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Remove",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            const res = await deleteProgress(bookId);
+                            if (res.success) {
+                                setCurrentReadingBooks(prev => prev.filter(b => b._id !== bookId));
+                            } else {
+                                Alert.alert("Error", res.message || "Failed to remove progress");
+                            }
+                        } catch (err) {
+                            Alert.alert("Error", "Failed to connect to server");
+                        }
+                    }
+                }
+            ]
+        );
+    };
 
     const handleUpdateProfile = () => {
         // Migrated to settings tab
@@ -594,7 +630,9 @@ export default function HomeScreen() {
             ? item.coverImageUrl
             : `${IMAGE_BASE_URL}/${item.coverImageUrl.replace(/\\/g, '/')}`;
 
-        const progress = item.progress || 0;
+        const originalProgress = item.progress || 0;
+        // Cap legacy progress values (pixels) to 100%
+        const progress = Math.min(originalProgress, 100);
 
         return (
             <TouchableOpacity
@@ -607,15 +645,27 @@ export default function HomeScreen() {
                     resizeMode="cover"
                 />
                 <View style={styles.readingInfo}>
-                    <View>
-                        <Text style={styles.readingTitle} numberOfLines={2}>{item.title}</Text>
-                        <Text style={styles.readingAuthor} numberOfLines={1}>{item.author}</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text style={styles.readingTitle} numberOfLines={2}>{item.title}</Text>
+                            <Text style={styles.readingAuthor} numberOfLines={1}>{item.author}</Text>
+                        </View>
+                        <TouchableOpacity style={{ padding: 4 }} onPress={() => handleRemoveProgress(item._id)}>
+                            <MaterialCommunityIcons name="close-circle-outline" size={20} color={colors.textMuted} />
+                        </TouchableOpacity>
                     </View>
                     <View style={styles.progressContainer}>
                         <View style={styles.progressBarBackground}>
-                            <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+                            <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: progress >= 100 ? '#4F7942' : colors.primary }]} />
                         </View>
-                        <Text style={styles.progressText}>{Math.round(progress)}% read</Text>
+                        {progress >= 100 ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 }}>
+                                <MaterialCommunityIcons name="check-circle" size={14} color="#4F7942" />
+                                <Text style={[styles.progressText, { color: '#4F7942', marginTop: 0, marginLeft: 4 }]}>Completed</Text>
+                            </View>
+                        ) : (
+                            <Text style={styles.progressText}>{Math.round(progress)}% read</Text>
+                        )}
                     </View>
                 </View>
             </TouchableOpacity>
@@ -623,9 +673,10 @@ export default function HomeScreen() {
     };
 
     const renderLocalBook = ({ item }: { item: any }) => {
-        const coverUri = item.coverImageUrl.startsWith('http')
-            ? item.coverImageUrl
-            : `${IMAGE_BASE_URL}/${item.coverImageUrl.replace(/\\/g, '/')}`;
+        const coverImageUrl = item.coverImageUrl || "";
+        const coverUri = coverImageUrl.startsWith('http')
+            ? coverImageUrl
+            : `${IMAGE_BASE_URL}/${coverImageUrl.replace(/\\/g, '/')}`;
 
         return (
             <TouchableOpacity
@@ -702,9 +753,7 @@ export default function HomeScreen() {
         );
     };
 
-    const styles = getStyles(colors);
-
-    if (loading && localBooks.length === 0) {
+    if (isFirstLoad && loading && localBooks.length === 0) {
         return (
             <View style={styles.centerContainer}>
                 <ActivityIndicator size="large" color="#4F7942" />
@@ -714,7 +763,7 @@ export default function HomeScreen() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
             <StatusBar barStyle="dark-content" />
-            
+
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: colors.border }]}>
                 <Image
@@ -725,7 +774,7 @@ export default function HomeScreen() {
                 <View style={styles.headerRight}>
                     <TouchableOpacity
                         style={styles.notificationBtn}
-                        onPress={() => setShowInbox(true)}
+                        onPress={() => router.push('/Notifications')}
                     >
                         <MaterialCommunityIcons name="bell-outline" size={26} color={colors.text} />
                         {unreadCount > 0 && (
@@ -757,26 +806,54 @@ export default function HomeScreen() {
                 </View>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                {/* Search Bar prominently at the top */}
-                <View style={styles.searchWrapper}>
-                    <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <MaterialCommunityIcons name="magnify" size={24} color={colors.textMuted} />
-                        <TextInput
-                            style={[styles.searchInput, { color: colors.text }]}
-                            placeholder="Search books, authors..."
-                            placeholderTextColor={colors.textMuted}
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            onSubmitEditing={handleSearch}
-                        />
-                        {searchQuery.length > 0 && (
-                            <TouchableOpacity onPress={handleSearch}>
-                                <MaterialCommunityIcons name="arrow-right-circle" size={24} color={colors.primary} />
-                            </TouchableOpacity>
-                        )}
+            <ScrollView 
+                showsVerticalScrollIndicator={false} 
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#4F7942"]} tintColor="#4F7942" />
+                }
+            >
+                {(!loading && hasConnectionError) ? (
+                    <View style={{ flex: 1, paddingVertical: 100, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+                        <MaterialCommunityIcons name="wifi-off" size={64} color={colors.textMuted} />
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text, marginTop: 16 }}>Unable to connect to server</Text>
+                        <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', marginTop: 8 }}>
+                            Please check if your backend and tunnel are running.
+                        </Text>
+                        <TouchableOpacity 
+                            onPress={loadInitialData}
+                            style={{ 
+                                backgroundColor: colors.primary, 
+                                paddingHorizontal: 24, 
+                                paddingVertical: 12, 
+                                borderRadius: 8, 
+                                marginTop: 24 
+                            }}
+                        >
+                            <Text style={{ color: 'white', fontWeight: 'bold' }}>Try Again</Text>
+                        </TouchableOpacity>
                     </View>
-                </View>
+                ) : (
+                    <>
+                        {/* Search Bar prominently at the top */}
+                        <View style={styles.searchWrapper}>
+                            <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                <MaterialCommunityIcons name="magnify" size={24} color={colors.textMuted} />
+                                <TextInput
+                                    style={[styles.searchInput, { color: colors.text }]}
+                                    placeholder="Search books, authors..."
+                                    placeholderTextColor={colors.textMuted}
+                                    value={searchQuery}
+                                    onChangeText={setSearchQuery}
+                                    onSubmitEditing={handleSearch}
+                                />
+                                {searchQuery.length > 0 && (
+                                    <TouchableOpacity onPress={handleSearch}>
+                                        <MaterialCommunityIcons name="arrow-right-circle" size={24} color={colors.primary} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        </View>
 
                 {/* Categories */}
                 <View style={styles.categoriesSection}>
@@ -894,69 +971,36 @@ export default function HomeScreen() {
                         </View>
                     )
                 ))}
-            </ScrollView>
 
-            <Modal
-                visible={showInbox}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setShowInbox(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.inboxContainer}>
-                        <View style={styles.inboxHeader}>
-                            <Text style={styles.inboxTitle}>Notifications</Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                {unreadCount > 0 && (
-                                    <TouchableOpacity onPress={handleMarkAllAsRead} style={{ marginRight: 20 }}>
-                                        <Text style={{ color: colors.primary, fontWeight: 'bold' }}>Mark all as read</Text>
-                                    </TouchableOpacity>
-                                )}
-                                <TouchableOpacity onPress={() => setShowInbox(false)}>
-                                    <MaterialCommunityIcons name="close" size={24} color={colors.text} />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-
-                        {notifications.length > 0 ? (
-                            <FlatList
-                                data={notifications}
-                                keyExtractor={(item) => item._id}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={[styles.notifItem, !item.isRead && styles.unreadItem]}
-                                        onPress={() => handleMarkAsRead(item._id)}
-                                    >
-                                        <View style={styles.notifIcon}>
-                                            <MaterialCommunityIcons
-                                                name={item.type === 'milestone' ? 'trophy' : 'bell'}
-                                                size={20}
-                                                color={item.isRead ? colors.textMuted : colors.primary}
-                                            />
-                                        </View>
-                                        <View style={styles.notifContent}>
-                                            <Text style={styles.notifTitle}>{item.title}</Text>
-                                            <Text style={styles.notifMessage}>{item.message}</Text>
-                                            <Text style={styles.notifTime}>
-                                                {new Date(item.createdAt).toLocaleDateString()} at {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </Text>
-                                        </View>
-                                        {!item.isRead && (
-                                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, alignSelf: 'center' }} />
-                                        )}
-                                    </TouchableOpacity>
-                                )}
-                                contentContainerStyle={{ paddingBottom: 40 }}
-                            />
-                        ) : (
-                            <View style={styles.emptyInbox}>
-                                <MaterialCommunityIcons name="bell-off-outline" size={64} color={colors.border} />
-                                <Text style={styles.emptyText}>No notifications yet</Text>
-                            </View>
-                        )}
+                {/* Empty State Fallback (If no errors but everything is empty) */}
+                {!loading && !isFirstLoad && !hasConnectionError && 
+                 localBooks.length === 0 && 
+                 currentReadingBooks.length === 0 && 
+                 gutenbergBooks.length === 0 && 
+                 Object.keys(categorizedBooks).length === 0 && (
+                    <View style={{ flex: 1, paddingVertical: 100, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+                        <MaterialCommunityIcons name="book-open-variant" size={64} color={colors.textMuted} />
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text, marginTop: 16 }}>No books available yet</Text>
+                        <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', marginTop: 8 }}>
+                            You haven't added any books yet, and the discovery list is currently empty.
+                        </Text>
+                        <TouchableOpacity 
+                            onPress={onRefresh}
+                            style={{ 
+                                backgroundColor: colors.primary, 
+                                paddingHorizontal: 24, 
+                                paddingVertical: 12, 
+                                borderRadius: 8, 
+                                marginTop: 24 
+                            }}
+                        >
+                            <Text style={{ color: 'white', fontWeight: 'bold' }}>Refresh List</Text>
+                        </TouchableOpacity>
                     </View>
-                </View>
-            </Modal>
+                )}
+                </>
+            )}
+            </ScrollView>
 
         </SafeAreaView>
     );

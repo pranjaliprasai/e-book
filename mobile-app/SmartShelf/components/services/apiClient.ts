@@ -3,6 +3,38 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import { API_BASE_URL, API_TIMEOUT, STORAGE_KEYS } from '../constants/api';
 
 /**
+ * INTERNAL SINGLETON STATE
+ * We use module-level variables for synchronous, reliable access to tokens.
+ */
+let cachedToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
+
+export const registerUnauthorizedHandler = (handler: () => void) => {
+  if (__DEV__) console.log('🛡️ [API Client] Unauthorized Handler Registered.');
+  onUnauthorized = handler;
+};
+
+/**
+ * Utility to sync auth headers with local singleton for performance and reliability
+ */
+export const syncAuthHeader = (token: string | null) => {
+    cachedToken = token;
+    if (__DEV__) console.log(`🛡️ [Sync] Token cached: ${!!token}`);
+    
+    // Also update common headers for third-party libraries that might use the defaults
+    if (token) {
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        apiClient.defaults.headers.common['authorization'] = `Bearer ${token}`;
+    } else {
+        delete apiClient.defaults.headers.common['Authorization'];
+        delete apiClient.defaults.headers.common['authorization'];
+    }
+};
+
+let last401Time = 0;
+const DEBOUNCE_401 = 2000; // Only handle 401 once every 2 seconds
+
+/**
  * Production-ready Axios instance for SmartShelf
  * Optimized for React Native / Expo
  */
@@ -20,32 +52,49 @@ const apiClient: AxiosInstance = axios.create({
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     try {
-      // 1. Retrieve token from AsyncStorage
-      const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const VERSION = "7.0.1";
+      // 1. Resolve token from the local synchronous singleton (fastest/most reliable)
+      let finalToken = cachedToken;
+      let source = "SINGLETON_CACHE";
 
-      if (token) {
-        // 2. Attach token to Authorization header using Bearer scheme
-        // Using .set() is the most robust way in Axios 1.x
-        if (config.headers.set) {
-          config.headers.set('Authorization', `Bearer ${token}`);
-        } else {
-          config.headers['Authorization'] = `Bearer ${token}`;
+      // 2. Fallback to AsyncStorage only if singleton is empty (e.g. after refresh or bundle reload)
+      if (!finalToken) {
+          finalToken = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+          if (finalToken) {
+            cachedToken = finalToken; // Update cache for the next request
+            source = "ASYNC_STORAGE_FALLBACK";
+          }
+      }
+
+      // 3. Exhaustive Injection Strategy
+      if (finalToken && finalToken.trim() !== "") {
+        const bearerToken = `Bearer ${finalToken}`;
+        
+        if (config.headers) {
+          config.headers['Authorization'] = bearerToken;
         }
 
-        // 3. Debug logging for development
         if (__DEV__) {
-          console.log(`🚀 [API Request] ${config.method?.toUpperCase()} ${config.url}`);
-          console.log(`🔑 Token Attached: Bearer ${token.substring(0, 10)}...`);
+          const maskedToken = finalToken.length > 8 ? `${finalToken.substring(0, 5)}...` : "[short]";
+          console.log(`🚀 [API Request v${VERSION}] ${config.method?.toUpperCase()} ${config.url} | TOKEN_SRC: ${source} | VAL: ${maskedToken}`);
+          
+          // ABSOLUTE PRE-FLIGHT LOG: Explicitly check the object keys
+          if (config.headers.toJSON) {
+              const snap = config.headers.toJSON();
+              const hasAuth = !!(snap.Authorization || snap.authorization);
+              console.log(`📋 [Pre-flight Snapshot] Auth Header Present: ${hasAuth}`);
+              if (!hasAuth) console.error("🛑 [CRITICAL ERROR] Header was not found in snap despite .set()!");
+          }
         }
       } else {
         if (__DEV__) {
-          console.log(`📤 [API Request] ${config.method?.toUpperCase()} ${config.url} (No Token Found)`);
+          console.log(`📤 [API Request v${VERSION}] ${config.method?.toUpperCase()} ${config.url} (NO TOKEN FOUND)`);
         }
       }
 
       return config;
     } catch (error) {
-      console.error('❌ [API Client] Request Error:', error);
+      console.error('❌ [API Client] Request Interceptor Error:', error);
       return config;
     }
   },
@@ -105,31 +154,38 @@ apiClient.interceptors.response.use(
       }
     }
 
-    // Handle 401 Unauthorized globally
+    // ─── 401 Handler ───────────────────────────────────────────────────────
+    // DO NOT call AsyncStorage.multiRemove() here. Doing so nukes the auth
+    // token mid-session, causing every subsequent request in the same batch
+    // (e.g. loadInitialData) to also fail with "Authorization token missing".
+    //
+    // The AuthProvider (use-auth.tsx) is the single source of truth for
+    // session state. It restores the session on mount and its logout() function
+    // handles cleanup. We just log the 401 here and let the caller decide.
+    // ────────────────────────────────────────────────────────────────────────
+    // ─── 401 Handler with Automatic Retry ──────────────────────────────────
     if (response?.status === 401) {
-      if (__DEV__) {
-        console.log(`🌀 [API Client] Session expired or invalid at ${config?.url}. Clearing storage...`);
-      }
-
-      // Clear all authentication data to force a re-login
-      try {
-        await AsyncStorage.multiRemove([
-          STORAGE_KEYS.ACCESS_TOKEN,
-          STORAGE_KEYS.USER_DATA,
-          STORAGE_KEYS.REFRESH_TOKEN,
-        ]);
-        if (__DEV__) console.log('🌀 [API Client] Storage cleared successfully.');
-      } catch (storageError) {
-        // This often happens if the device is out of space (disk full)
-        console.error('⚠️ [API Client] Failed to clear storage on 401 (Disk might be full):', storageError);
+      // @ts-ignore - custom flag for retry
+      if (!config?._retry) {
+        // @ts-ignore
+        config._retry = true;
         
-        // CRITICAL: We don't want to get stuck in a loop. 
-        // We've already tried to clear it; even if it fails, we should proceed
-        // and let the app's internal state handle the logout or redirection.
+        if (__DEV__) console.log(`🌀 [API Client] 401 at ${config?.url} — Retrying once in 500ms...`);
+        
+        // Wait 500ms and retry the request once
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (config) {
+          return apiClient(config as any);
+        }
       }
 
-      // Note: The app's root layout (_layout.tsx) will detect the missing user/token
-      // and handle the redirection to the Login screen automatically.
+      const now = Date.now();
+      if (now - last401Time > DEBOUNCE_401) {
+        last401Time = now;
+        if (__DEV__) console.log(`🛑 [API Client] Persistent 401 at ${config?.url} — notifying auth provider.`);
+        
+        if (onUnauthorized) onUnauthorized();
+      }
     }
 
     return Promise.reject(error);

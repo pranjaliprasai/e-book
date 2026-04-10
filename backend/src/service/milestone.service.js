@@ -1,4 +1,5 @@
 import milestoneModel from "../model/milestone.model.js";
+import userModel from "../model/user.model.js";
 import { AppError } from "../utils/error.js";
 import { createNotificationService } from "./notification.service.js";
 
@@ -48,6 +49,29 @@ export const completeMilestoneService = async (userId, milestoneId) => {
             `Congratulations! You've achieved your goal of ${milestone.targetMinutes} minutes of reading.`,
             "milestone"
         );
+
+        // Record achievement on user profile
+        const user = await userModel.findById(userId);
+        if (user) {
+            const milestoneKey = `TIME_${milestone.targetMinutes}`;
+            if (!user.readingStats) {
+                user.readingStats = {
+                    totalPagesRead: 0,
+                    totalReadingTime: 0,
+                    pagesReadToday: 0,
+                    lastReadDay: "",
+                    booksReadThisMonth: 0,
+                    readingTimeThisMonth: 0,
+                    pagesReadThisMonth: 0,
+                    lastReadMonth: "",
+                    achievedMilestones: []
+                };
+            }
+            if (!user.readingStats.achievedMilestones.includes(milestoneKey)) {
+                user.readingStats.achievedMilestones.push(milestoneKey);
+                await user.save();
+            }
+        }
 
         return milestone;
     } catch (error) {

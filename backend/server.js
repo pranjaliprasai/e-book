@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ override: true });
 
 import express from "express";
 import { fileURLToPath } from "url";
@@ -16,6 +16,8 @@ const __dirname = dirname(__filename);
 
 const app = express();
 
+app.set('trust proxy', true);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
@@ -23,7 +25,14 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
+    allowedHeaders: [
+      "Content-Type", 
+      "Authorization", 
+      "authorization", 
+      "ngrok-skip-browser-warning", 
+      "Bypass-Tunnel-Reminder"
+    ],
+    credentials: true,
   }),
 );
 

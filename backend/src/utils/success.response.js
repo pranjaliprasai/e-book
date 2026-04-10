@@ -1,11 +1,11 @@
 const successResponse = (data, res) => {
-  const statusCode = data.statusCode || 200;
-  const message = data.message || "Success";
+  const { statusCode = 200, message = "Success", data: payload, ...rest } = data;
 
   const response = {
     success: true,
     message: message,
-    data: data.data || null,
+    data: payload || null,
+    ...rest,
   };
 
   res.status(statusCode).json(response);

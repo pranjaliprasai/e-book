@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-    baseURL: "https://cresyl-regina-nonfacetiously.ngrok-free.dev/api",
+    baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api",
 });
 
 // Auto-attach token to every request if it exists
@@ -15,5 +15,7 @@ API.interceptors.request.use((config) => {
 });
 
 export const getUsersAPI = (params) => API.get("/user", { params });
-export const updateUserAPI = (id, data) => API.put(`/user/${id}`, data);
+export const createUserAPI = (data) => API.post("/user", data);
 export const deleteUserAPI = (id) => API.delete(`/user/${id}`);
+export const updateUserAPI = (id, data) => API.put(`/user/${id}`, data);
+export const updateMyProfileAPI = (formData) => API.put("/user/profile", formData);

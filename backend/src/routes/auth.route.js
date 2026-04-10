@@ -3,6 +3,8 @@ import {
   forgetPasswordController,
   googleAuthController,
   googleCallbackController,
+  googleCodeController,
+  googleIdTokenController,
   loginUserController,
   registerUserController,
   resetPasswordController,
@@ -17,5 +19,7 @@ router.post("/reset-password", resetPasswordController);
 
 router.get("/google-auth", googleAuthController);
 router.get("/google/callback", googleCallbackController);
+router.post("/google/token", googleIdTokenController);
+router.post("/google/code", googleCodeController);   // PKCE exchange (mobile)
 
 export default router;

@@ -53,9 +53,11 @@ export default function SearchScreen() {
     };
 
     const renderBookResult = ({ item }: { item: any }) => {
-        const coverUri = item.coverImageUrl.startsWith('http')
+        const coverUri = item.coverImageUrl?.startsWith('http')
             ? item.coverImageUrl
-            : `${IMAGE_BASE_URL}/${item.coverImageUrl.replace(/\\/g, '/')}`;
+            : item.coverImageUrl 
+                ? `${IMAGE_BASE_URL}/${item.coverImageUrl.replace(/\\/g, '/')}`
+                : 'https://via.placeholder.com/150';
 
         return (
             <TouchableOpacity

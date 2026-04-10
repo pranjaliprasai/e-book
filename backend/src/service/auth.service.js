@@ -169,6 +169,7 @@ export const googleCallbackService = async (code, redirect_uri) => {
     if (user) {
       token = generateToken(user._id, user.name, user.email, user.role);
       const resData = {
+        id: user._id,
         name: user.name,
         email: user.email,
         picture,
@@ -186,12 +187,120 @@ export const googleCallbackService = async (code, redirect_uri) => {
 
     token = generateToken(newUser?._id, name, email, "user");
     const resData = {
+      id: newUser?._id,
       name,
       email,
       picture,
       role: "user",
       favorites: newUser?.favorites || [],
     };
+    return { resData, token };
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Verify a Google ID Token obtained directly by the mobile app (expo-auth-session id_token flow).
+ * No code exchange needed — the id_token is a signed JWT we can verify locally.
+ */
+export const googleIdTokenService = async (idToken) => {
+  try {
+    if (!idToken) {
+      throw new AppError("ID token not provided", 400);
+    }
+
+    const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+    // Verify the token signature and audience
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload) {
+      throw new AppError("Invalid Google ID token", 401);
+    }
+
+    const { email, name, picture } = payload;
+
+    // Find existing user or register them automatically
+    let user = await userModel.findOne({ email });
+
+    if (!user) {
+      user = await userModel.create({ name, email, isGoogle: true });
+    }
+
+    const token = generateToken(user._id, user.name, user.email, user.role);
+    const resData = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      picture: picture || user.picture,
+      role: user.role,
+      favorites: user.favorites || [],
+    };
+
+    return { resData, token };
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * PKCE Code Exchange — receives { code, codeVerifier, redirectUri } from the mobile app.
+ * The codeVerifier proves the exchange belongs to the original auth request.
+ * No native client IDs required — uses the web client with PKCE.
+ */
+export const googleCodeService = async (code, codeVerifier, redirectUri) => {
+  try {
+    if (!code) {
+      throw new AppError("Authorization code not provided", 400);
+    }
+
+    const googleClient = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+    );
+
+    // Exchange the auth code using PKCE verifier
+    let tokens;
+    try {
+        const exchangeResults = await googleClient.getToken({
+            code,
+            codeVerifier,   // PKCE — Google verifies this matches the challenge sent earlier
+            redirect_uri: redirectUri || process.env.GOOGLE_REDIRECT_URL,
+        });
+        tokens = exchangeResults.tokens;
+    } catch (exchangeError) {
+        console.error('❌ [Google Code Service] getToken exchange failed:', exchangeError.response?.data || exchangeError.message);
+        throw new AppError(exchangeError.response?.data?.error_description || "Failed to exchange Google code. Check redirect URIs.", 401);
+    }
+    googleClient.setCredentials(tokens);
+
+    // Fetch user profile using the access token
+    const userInfo = await googleClient.request({
+      url: "https://www.googleapis.com/oauth2/v3/userinfo",
+    });
+
+    const { email, name, picture } = userInfo.data;
+
+    let user = await userModel.findOne({ email });
+    if (!user) {
+      user = await userModel.create({ name, email, isGoogle: true });
+    }
+
+    const token = generateToken(user._id, user.name, user.email, user.role);
+    const resData = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      picture: picture || user.picture,
+      role: user.role,
+      favorites: user.favorites || [],
+    };
+
     return { resData, token };
   } catch (error) {
     throw error;

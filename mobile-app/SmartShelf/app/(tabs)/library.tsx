@@ -15,7 +15,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/use-auth';
-import { getBooks, getFavorites, getCurrentReadingBooks } from '../../components/services/bookServices';
+import { getBooks, getFavorites, getCurrentReadingBooks, getCompletedBooks } from '../../components/services/bookServices';
+import { getNotifications } from '../../components/services/notificationServices';
 import { API_BASE_URL } from '../../components/constants/api';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/use-theme';
@@ -26,22 +27,26 @@ const IMAGE_BASE_URL = API_BASE_URL.replace('/api', '');
 export default function LibraryScreen() {
     const router = useRouter();
     const { user } = useAuth();
-    const { colors } = useTheme();
+    const { colors: themeColors } = useTheme();
     const [localBooks, setLocalBooks] = useState<any[]>([]);
     const [favoriteBooks, setFavoriteBooks] = useState<any[]>([]);
     const [currentReadingBooks, setCurrentReadingBooks] = useState<any[]>([]);
+    const [completedBooks, setCompletedBooks] = useState<any[]>([]);
+    const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'all' | 'reading' | 'favorites'>('all');
+    const [activeTab, setActiveTab] = useState<'all' | 'reading' | 'favorites' | 'finished'>('all');
     const scrollY = React.useRef(new Animated.Value(0)).current; // Added scrollY
 
     const loadLibraryData = async () => {
         setLoading(true);
         console.log('[Library] Refreshing library data...');
         try {
-            const [localRes, favRes, readingRes] = await Promise.all([
+            const [localRes, favRes, readingRes, completedRes, notifRes] = await Promise.all([
                 getBooks(undefined, false, 50),
                 getFavorites(),
-                getCurrentReadingBooks()
+                getCurrentReadingBooks(),
+                getCompletedBooks(),
+                getNotifications()
             ]);
 
             if (localRes.success) {
@@ -55,6 +60,13 @@ export default function LibraryScreen() {
             if (readingRes.success) {
                 console.log(`[Library] Loaded ${readingRes.data?.length} current reading books`);
                 setCurrentReadingBooks(readingRes.data || []);
+            }
+            if (completedRes.success) {
+                console.log(`[Library] Loaded ${completedRes.data?.length} completed books`);
+                setCompletedBooks(completedRes.data || []);
+            }
+            if (notifRes.success) {
+                setUnreadCount(notifRes.unreadCount || 0);
             }
         } catch (err) {
             console.error('Error loading library:', err);
@@ -76,19 +88,28 @@ export default function LibraryScreen() {
             ? item.coverImageUrl
             : `${IMAGE_BASE_URL}/${item.coverImageUrl.replace(/\\/g, '/')}`;
 
+        const isCompleted = activeTab === 'finished' || completedBooks.some(b => b._id === item._id);
+
         return (
             <TouchableOpacity
-                style={[styles.bookCard, { backgroundColor: colors.surface }]}
+                style={[styles.bookCard, { backgroundColor: themeColors.surface }]}
                 onPress={() => router.push({ pathname: '/BookDetails' as any, params: { id: item._id } })}
             >
-                <RNImage
-                    source={{ uri: coverUri }}
-                    style={styles.coverImage}
-                    resizeMode="cover"
-                />
+                <View>
+                    <RNImage
+                        source={{ uri: coverUri }}
+                        style={styles.coverImage}
+                        resizeMode="cover"
+                    />
+                    {isCompleted && (
+                        <View style={styles.completedBadge}>
+                            <MaterialCommunityIcons name="check-circle" size={20} color="#4F7942" />
+                        </View>
+                    )}
+                </View>
                 <View style={styles.bookInfo}>
-                    <Text style={[styles.bookTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
-                    <Text style={[styles.bookAuthor, { color: colors.textMuted }]} numberOfLines={1}>{item.author}</Text>
+                    <Text style={[styles.bookTitle, { color: themeColors.text }]} numberOfLines={2}>{item.title}</Text>
+                    <Text style={[styles.bookAuthor, { color: themeColors.textMuted }]} numberOfLines={1}>{item.author}</Text>
                 </View>
             </TouchableOpacity>
         );
@@ -97,17 +118,30 @@ export default function LibraryScreen() {
     // Render header logic
     const renderHeader = () => {
         return (
-            <View style={[styles.header, { borderBottomColor: colors.border }]}>
+            <View style={[styles.header, { borderBottomColor: themeColors.border }]}>
                 <View>
-                    <Text style={[styles.headerSubtitle, { color: colors.textMuted }]}>Your Collection</Text>
-                    <Text style={[styles.headerTitle, { color: colors.text }]}>Library</Text>
+                    <Text style={[styles.headerSubtitle, { color: themeColors.textMuted }]}>Your Collection</Text>
+                    <Text style={[styles.headerTitle, { color: themeColors.text }]}>Library</Text>
                 </View>
-                <TouchableOpacity
-                    style={styles.milestoneBtn}
-                    onPress={() => router.push('/ReadingMilestones')}
-                >
-                    <MaterialCommunityIcons name="trophy-outline" size={24} color={colors.primary} />
-                </TouchableOpacity>
+                <View style={styles.headerRight}>
+                    <TouchableOpacity
+                        style={styles.headerIconBtn}
+                        onPress={() => router.push('/Notifications')}
+                    >
+                        <MaterialCommunityIcons name="bell-outline" size={26} color={themeColors.text} />
+                        {unreadCount > 0 && (
+                            <View style={[styles.badge, { borderColor: themeColors.background }]}>
+                                <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.headerIconBtn}
+                        onPress={() => router.push('/ReadingMilestones')}
+                    >
+                        <MaterialCommunityIcons name="trophy-outline" size={26} color={themeColors.primary} />
+                    </TouchableOpacity>
+                </View>
             </View>
         );
     };
@@ -116,24 +150,26 @@ export default function LibraryScreen() {
         ? localBooks
         : activeTab === 'favorites'
             ? favoriteBooks
-            : currentReadingBooks;
+            : activeTab === 'reading'
+                ? currentReadingBooks
+                : completedBooks;
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
+        <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]} edges={['top', 'left', 'right']}>
             {renderHeader()}
 
-            <View style={[styles.tabsContainer, { backgroundColor: colors.background, paddingBottom: 10 }]}>
+            <View style={[styles.tabsContainer, { backgroundColor: themeColors.background, paddingBottom: 10 }]}>
                 <ScrollView 
                     horizontal 
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.tabsScroll}
                 >
-                    {(['all', 'reading', 'favorites'] as const).map((tab) => (
+                    {(['all', 'reading', 'finished', 'favorites'] as const).map((tab) => (
                         <TouchableOpacity
                             key={tab}
                             style={[
                                 styles.tab,
-                                activeTab === tab && [styles.activeTab, { backgroundColor: colors.primary }]
+                                activeTab === tab && [styles.activeTab, { backgroundColor: themeColors.primary }]
                             ]}
                             onPress={() => setActiveTab(tab)}
                         >
@@ -141,7 +177,7 @@ export default function LibraryScreen() {
                                 styles.tabText,
                                 activeTab === tab && styles.activeTabText
                             ]}>
-                                {tab === 'reading' ? 'Continue Reading' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                {tab === 'reading' ? 'Continue Reading' : tab === 'finished' ? 'Finished' : tab.charAt(0).toUpperCase() + tab.slice(1)}
                             </Text>
                         </TouchableOpacity>
                     ))}
@@ -150,7 +186,7 @@ export default function LibraryScreen() {
 
             {loading ? (
                 <View style={styles.centerContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
+                    <ActivityIndicator size="large" color={themeColors.primary} />
                 </View>
             ) : displayBooks.length > 0 ? (
                 <FlatList
@@ -162,18 +198,20 @@ export default function LibraryScreen() {
                     columnWrapperStyle={styles.columnWrapper}
                 />
             ) : (
-                <View style={[styles.emptyContainer, { backgroundColor: colors.background }]}>
-                    <MaterialCommunityIcons name="bookshelf" size={80} color={colors.border} />
-                    <Text style={[styles.emptyTitle, { color: colors.text }]}>Your library is empty</Text>
-                    <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+                <View style={[styles.emptyContainer, { backgroundColor: themeColors.background }]}>
+                    <MaterialCommunityIcons name="bookshelf" size={80} color={themeColors.border} />
+                    <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Your library is empty</Text>
+                    <Text style={[styles.emptySubtitle, { color: themeColors.textMuted }]}>
                         {activeTab === 'all'
                             ? "Start adding books from the Home or Search tabs to build your collection."
                             : activeTab === 'favorites'
                                 ? "Add books to your favorites to keep track of what you love."
-                                : "Books you've recently started reading will appear here."}
+                                : activeTab === 'reading' 
+                                    ? "Books you've recently started reading will appear here."
+                                    : "Books you've completely finished reading will appear here."}
                     </Text>
                     <TouchableOpacity
-                        style={[styles.exploreBtn, { backgroundColor: colors.primary }]}
+                        style={[styles.exploreBtn, { backgroundColor: themeColors.primary }]}
                         onPress={() => router.push('/')}
                     >
                         <Text style={styles.exploreBtnText}>Explore Books</Text>
@@ -205,9 +243,33 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 4,
     },
-    milestoneBtn: {
-        padding: 8,
-        borderRadius: 12,
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    headerIconBtn: {
+        width: 44,
+        height: 44,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 4,
+    },
+    badge: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        backgroundColor: '#FF3B30',
+        borderRadius: 10,
+        minWidth: 18,
+        height: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+    },
+    badgeText: {
+        color: 'white',
+        fontSize: 10,
+        fontWeight: '900',
     },
     tabsContainer: {
         paddingHorizontal: 10,
@@ -301,5 +363,18 @@ const styles = StyleSheet.create({
         color: '#FFF',
         fontSize: 16,
         fontWeight: '900',
+    },
+    completedBadge: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        borderRadius: 12,
+        padding: 2,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+        elevation: 3,
     },
 });

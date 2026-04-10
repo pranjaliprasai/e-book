@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getActiveMilestone, Milestone, completeMilestone } from '../components/services/milestoneServices';
+import { createNotification } from '../components/services/notificationServices';
 
 let globalActiveMilestone: Milestone | null = null;
 let listeners: Array<(m: Milestone | null) => void> = [];
+
+let isCompleting = false;
+let warningSent = false;
 
 const notifyListeners = () => {
   listeners.forEach(l => l(globalActiveMilestone));
@@ -10,6 +14,8 @@ const notifyListeners = () => {
 
 export const setGlobalMilestone = (m: Milestone | null) => {
   globalActiveMilestone = m;
+  isCompleting = false;
+  warningSent = false; // Reset for new session
   notifyListeners();
 };
 
@@ -47,12 +53,27 @@ export function useMilestone() {
       const diff = Math.floor((now - start) / 1000);
       setElapsed(diff);
 
-      const target = activeMilestone.targetMinutes * 60;
-      if (diff >= target) {
+      const targetSeconds = activeMilestone.targetMinutes * 60;
+      
+      // 1 minute warning
+      if (targetSeconds > 60 && (targetSeconds - diff) <= 60 && !warningSent && !isCompleting) {
+        warningSent = true;
+        createNotification(
+          "⏳ Almost there!", 
+          "You have 1 minute left to reach your reading goal. Keep going!",
+          "milestone_warning"
+        ).catch(console.error);
+      }
+
+      if (diff >= targetSeconds && !isCompleting) {
         // Auto-complete if finished
+        isCompleting = true;
         completeMilestone(activeMilestone._id).then(() => {
           setGlobalMilestone(null);
-        }).catch(console.error);
+        }).catch((err) => {
+          console.error(err);
+          isCompleting = false; // Reset if it failed
+        });
         clearInterval(interval);
       }
     }, 1000);

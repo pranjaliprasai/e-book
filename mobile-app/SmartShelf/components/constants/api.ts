@@ -3,7 +3,7 @@
 
 // Active Tunnel URL (Update this when tunnel restarts)
 // Use the fixed ngrok hostname if configured in ngrok.yml
-const FORWARED_URL = "-https://cresyl-regina-nonfacetiously.ngrok-free.dev";
+const FORWARED_URL = "https://cresyl-regina-nonfacetiously.ngrok-free.dev";
 
 // Unified Gateway (Recommended for one tunnel connecting both API and Metro)
 // const FORWARED_URL = "https://your-unified-tunnel.ngrok-free.dev"; 
@@ -22,6 +22,8 @@ export const API_ENDPOINTS = {
     GET_BOOKS: "/book",
     GOOGLE_AUTH: "/auth/google-auth",
     GOOGLE_CALLBACK: "/auth/google/callback",
+    GOOGLE_TOKEN_LOGIN: "/auth/google/token",
+    GOOGLE_CODE_LOGIN: "/auth/google/code",    // PKCE code exchange (mobile)
     EXTERNAL_GUTENBERG: "/book/external/gutenberg",
     EXTERNAL_OPEN_LIBRARY: "/book/external/openlibrary",
     IMPORT_BOOK: "/book/import",
@@ -31,8 +33,11 @@ export const API_ENDPOINTS = {
     HIGHLIGHT: "/highlight",
     USER_PROGRESS: "/user/progress",
     CURRENT_READING: "/user/current-reading",
+    COMPLETED_BOOKS: "/user/completed",
     UPDATE_STATS: "/user/stats/update",
     NOTIFICATIONS: "/notifications",
+    KHALTI_INITIATE: "/khalti/initiate",
+    KHALTI_VERIFY: "/khalti/verify",
 };
 
 export const EXTERNAL_APIS = {

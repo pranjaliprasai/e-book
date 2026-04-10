@@ -56,6 +56,6 @@ router.put(
     updateBookController
 );
 
-router.delete("/:id", verifyToken, deleteBookController);
+router.delete("/:id", verifyToken, isAdmin, deleteBookController);
 
 export default router;
